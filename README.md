@@ -29,19 +29,6 @@ User Input
 
 Repository Structure
 
-robotics-project/
-├── config/
-│   ├── action.yaml
-│   ├── object.yaml
-│   ├── mapping.yaml
-│   └── rules.yaml
-├── docs/
-│   └── system_design.md
-├── scripts/
-│   └── test_pipeline.py
-├── ros/
-└── README.md
-
 Configuration Files
 
 config/object.yaml
