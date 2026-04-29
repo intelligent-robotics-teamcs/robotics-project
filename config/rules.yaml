@@ -1,0 +1,22 @@
+# Naming Conventions - Pet Care Robot
+
+naming:
+  target_object: "{class_name}"
+  action_command: "{action}_{class_name}"
+
+coco_class_mapping:
+  0: "person"
+  15: "cat"
+  16: "dog"
+  32: "ball"
+
+examples:
+  targets:
+    - "dog"
+    - "cat"
+    - "person"
+
+  actions:
+    - "approach_dog"
+    - "observe_cat"
+    - "follow_person"

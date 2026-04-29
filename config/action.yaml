@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=ignore
+approach:
+  description: "Move to target location"
+  type: "navigation"
+  framework: "Nav2"
+  parameters:
+    goal_tolerance: 0.5
+    max_velocity: 0.5
+    timeout: 60
+
+observe:
+  description: "Rotate towards target (in place)"
+  type: "rotation"
+  framework: "Base controller"
+  parameters:
+    angle_tolerance: 0.087
+    max_angular_velocity: 0.5
+    timeout: 10
+
+follow:
+  description: "Track moving target at safe distance"
+  type: "tracking"
+  framework: "Nav2 + Vision feedback"
+  parameters:
+    desired_distance: 1.0
+    max_velocity: 0.8
+    update_rate: 10
+    target_lost_timeout: 3
