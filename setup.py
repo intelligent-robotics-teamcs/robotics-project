@@ -9,10 +9,9 @@ setup(
     version='0.0.1',
 
     # scripts 폴더 사용
-    py_modules=[
-        'scripts.target_resolver',
-        'scripts.nav2_goal_sender',
-    ],
+    packages=[
+    'scripts',
+  ],
 
     data_files=[
         # ROS2 패키지 인식용
