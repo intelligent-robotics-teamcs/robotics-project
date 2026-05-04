@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>pet_robot_pkg</name>
+  <version>0.0.1</version>
+  <description>LLM + Vision based pet robot navigation system</description>
+
+  <maintainer email="your_email@example.com">TeamComgong</maintainer>
+  <license>MIT</license>
+
+  <!ROS2 Python>
+  <exec_depend>rclpy</exec_depend>
+
+  <!Navigation>
+  <exec_depend>nav2_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>action_msgs</exec_depend>
+
+  <!YAML parsing>
+  <exec_depend>python3-yaml</exec_depend>
+
+  <!Build type>
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
