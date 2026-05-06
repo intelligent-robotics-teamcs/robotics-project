@@ -2,6 +2,9 @@
 
 import math
 import sys
+import time
+from dataclasses import dataclass
+from enum import Enum
 
 import rclpy
 from rclpy.node import Node
@@ -9,11 +12,49 @@ from rclpy.action import ActionClient
 
 from nav2_msgs.action import NavigateToPose
 from geometry_msgs.msg import PoseStamped
-
-from scripts.target_resolver import TargetResolver
 from action_msgs.msg import GoalStatus
 
+try:
+    from scripts.target_resolver import TargetResolver
+except ImportError:
+    from target_resolver import TargetResolver
+
+
+class NavigationState(Enum):
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    TIMEOUT = "TIMEOUT"
+    REJECTED = "REJECTED"
+    SERVER_UNAVAILABLE = "SERVER_UNAVAILABLE"
+    RESOLVE_FAILED = "RESOLVE_FAILED"
+
+
+@dataclass
+class NavigationResult:
+    state: NavigationState
+    object_name: str
+    target_name: str | None = None
+    status_code: int | None = None
+    min_distance_remaining: float | None = None
+    message: str = ""
+
+    @property
+    def success(self) -> bool:
+        return self.state == NavigationState.SUCCESS
+
+
 class Nav2GoalSender(Node):
+    """
+    Single-goal navigation executor.
+
+    Responsibility:
+    - object name -> pose
+    - send NavigateToPose goal
+    - track feedback distance
+    - judge success/failure
+    - handle timeout
+    """
+
     def __init__(self):
         super().__init__("nav2_goal_sender")
 
@@ -25,21 +66,22 @@ class Nav2GoalSender(Node):
 
         self.resolver = TargetResolver()
 
-    def yaw_to_quaternion(self, yaw):
+        self._latest_distance_remaining = None
+        self._min_distance_remaining = None
+
+    def yaw_to_quaternion(self, yaw: float):
         """
         Convert yaw angle to quaternion.
-        TurtleBot3 navigation mostly uses yaw only.
+        TurtleBot3 navigation mainly uses z/w orientation.
         """
         qz = math.sin(yaw / 2.0)
         qw = math.cos(yaw / 2.0)
-
         return qz, qw
 
-    def create_pose_stamped(self, pose_dict):
+    def create_pose_stamped(self, pose_dict: dict) -> PoseStamped:
         """
         Convert target.yaml pose dict to ROS2 PoseStamped.
         """
-
         pose_msg = PoseStamped()
 
         pose_msg.header.frame_id = pose_dict["frame_id"]
@@ -58,21 +100,127 @@ class Nav2GoalSender(Node):
 
         return pose_msg
 
-    def send_goal_to_object(self, object_name):
+    def feedback_callback(self, feedback_msg):
         """
-        object name -> target pose -> Nav2 goal
-        """
+        Track Nav2 feedback.
 
-        self.get_logger().info(f"Resolving target for object: {object_name}")
+        distance_remaining:
+        - smaller value means the robot is closer to the goal.
+        - used for logging and arrival judgment.
+        """
+        feedback = feedback_msg.feedback
+        distance = float(feedback.distance_remaining)
+
+        self._latest_distance_remaining = distance
+
+        if self._min_distance_remaining is None:
+            self._min_distance_remaining = distance
+        else:
+            self._min_distance_remaining = min(
+                self._min_distance_remaining,
+                distance
+            )
+
+        self.get_logger().info(
+            f"Distance remaining: {distance:.2f} m"
+        )
+
+    def _reset_feedback_state(self):
+        self._latest_distance_remaining = None
+        self._min_distance_remaining = None
+
+    def _judge_result(
+        self,
+        object_name: str,
+        target_name: str,
+        status_code: int,
+        goal_tolerance_m: float
+    ) -> NavigationResult:
+        """
+        Convert Nav2 action status into project-level result.
+
+        Nav2 status 4 means STATUS_SUCCEEDED.
+        distance_remaining is additionally used as a sanity check.
+        """
+        min_distance = self._min_distance_remaining
+
+        if status_code == GoalStatus.STATUS_SUCCEEDED:
+            if min_distance is None:
+                return NavigationResult(
+                    state=NavigationState.SUCCESS,
+                    object_name=object_name,
+                    target_name=target_name,
+                    status_code=status_code,
+                    min_distance_remaining=min_distance,
+                    message="Nav2 reported success."
+                )
+
+            if min_distance <= goal_tolerance_m:
+                return NavigationResult(
+                    state=NavigationState.SUCCESS,
+                    object_name=object_name,
+                    target_name=target_name,
+                    status_code=status_code,
+                    min_distance_remaining=min_distance,
+                    message=(
+                        f"Arrived within tolerance "
+                        f"({min_distance:.2f} m <= {goal_tolerance_m:.2f} m)."
+                    )
+                )
+
+            return NavigationResult(
+                state=NavigationState.SUCCESS,
+                object_name=object_name,
+                target_name=target_name,
+                status_code=status_code,
+                min_distance_remaining=min_distance,
+                message=(
+                    "Nav2 reported success, but feedback distance did not "
+                    "go below tolerance. Treating as success because final "
+                    "action status is succeeded."
+                )
+            )
+
+        return NavigationResult(
+            state=NavigationState.FAILED,
+            object_name=object_name,
+            target_name=target_name,
+            status_code=status_code,
+            min_distance_remaining=min_distance,
+            message=f"Nav2 finished with non-success status: {status_code}"
+        )
+
+    def navigate_to_object(
+        self,
+        object_name: str,
+        timeout_sec: float = 60.0,
+        goal_tolerance_m: float = 0.25
+    ) -> NavigationResult:
+        """
+        Blocking single-object navigation.
+
+        This function is intentionally blocking because multi-target navigation
+        needs a clear result before moving to the next target.
+        """
+        self._reset_feedback_state()
+
+        self.get_logger().info(
+            f"Resolving target for object: {object_name}"
+        )
 
         try:
-            result = self.resolver.get_pose(object_name)
+            resolved = self.resolver.get_pose(object_name)
         except Exception as e:
             self.get_logger().error(f"Failed to resolve target: {e}")
-            return
 
-        pose_dict = result["pose"]
-        target_name = result["target"]
+            return NavigationResult(
+                state=NavigationState.RESOLVE_FAILED,
+                object_name=object_name,
+                message=str(e)
+            )
+
+        pose_dict = resolved["pose"]
+        target_name = resolved["target"]
 
         self.get_logger().info(
             f"Resolved object '{object_name}' to target '{target_name}'"
@@ -85,10 +233,19 @@ class Nav2GoalSender(Node):
 
         if not self._action_client.wait_for_server(timeout_sec=10.0):
             self.get_logger().error("Nav2 action server not available.")
-            return
+
+            return NavigationResult(
+                state=NavigationState.SERVER_UNAVAILABLE,
+                object_name=object_name,
+                target_name=target_name,
+                message="Nav2 action server not available."
+            )
 
         self.get_logger().info(
-            f"Sending goal: x={pose_dict['x']}, y={pose_dict['y']}, yaw={pose_dict['yaw']}"
+            f"Sending goal: "
+            f"x={pose_dict['x']}, "
+            f"y={pose_dict['y']}, "
+            f"yaw={pose_dict['yaw']}"
         )
 
         send_goal_future = self._action_client.send_goal_async(
@@ -96,39 +253,79 @@ class Nav2GoalSender(Node):
             feedback_callback=self.feedback_callback
         )
 
-        send_goal_future.add_done_callback(self.goal_response_callback)
+        start_time = time.monotonic()
 
-    def goal_response_callback(self, future):
-        goal_handle = future.result()
+        while not send_goal_future.done():
+            rclpy.spin_once(self, timeout_sec=0.1)
+
+            if time.monotonic() - start_time > timeout_sec:
+                return NavigationResult(
+                    state=NavigationState.TIMEOUT,
+                    object_name=object_name,
+                    target_name=target_name,
+                    min_distance_remaining=self._min_distance_remaining,
+                    message="Timed out while waiting for goal response."
+                )
+
+        goal_handle = send_goal_future.result()
 
         if not goal_handle.accepted:
             self.get_logger().error("Goal rejected by Nav2.")
-            return
+
+            return NavigationResult(
+                state=NavigationState.REJECTED,
+                object_name=object_name,
+                target_name=target_name,
+                min_distance_remaining=self._min_distance_remaining,
+                message="Goal rejected by Nav2."
+            )
 
         self.get_logger().info("Goal accepted by Nav2.")
 
         result_future = goal_handle.get_result_async()
-        result_future.add_done_callback(self.result_callback)
 
-    def feedback_callback(self, feedback_msg):
-        feedback = feedback_msg.feedback
-        distance = feedback.distance_remaining
+        while not result_future.done():
+            rclpy.spin_once(self, timeout_sec=0.1)
 
-        self.get_logger().info(f"Distance remaining: {distance:.2f} m")
+            if time.monotonic() - start_time > timeout_sec:
+                self.get_logger().warn(
+                    f"Navigation timeout after {timeout_sec:.1f} sec. "
+                    "Canceling goal..."
+                )
 
-        if distance < 0.1:
-            self.get_logger().info("Goal reached! Force shutdown.")
-            rclpy.shutdown()
+                cancel_future = goal_handle.cancel_goal_async()
 
-    def result_callback(self, future):
-        status = future.result().status
+                while not cancel_future.done():
+                    rclpy.spin_once(self, timeout_sec=0.1)
 
-        if status == GoalStatus.STATUS_SUCCEEDED:
-            self.get_logger().info("Navigation succeeded.")
+                return NavigationResult(
+                    state=NavigationState.TIMEOUT,
+                    object_name=object_name,
+                    target_name=target_name,
+                    min_distance_remaining=self._min_distance_remaining,
+                    message=f"Navigation timed out after {timeout_sec:.1f} sec."
+                )
+
+        wrapped_result = result_future.result()
+        status_code = wrapped_result.status
+
+        result = self._judge_result(
+            object_name=object_name,
+            target_name=target_name,
+            status_code=status_code,
+            goal_tolerance_m=goal_tolerance_m
+        )
+
+        if result.success:
+            self.get_logger().info(
+                f"[SUCCESS] {object_name} -> {target_name}: {result.message}"
+            )
         else:
-            self.get_logger().warn(f"Navigation finished with status: {status}")
+            self.get_logger().warn(
+                f"[FAILED] {object_name} -> {target_name}: {result.message}"
+            )
 
-        rclpy.shutdown()
+        return result
 
 
 def main(args=None):
@@ -137,14 +334,23 @@ def main(args=None):
     if len(sys.argv) < 2:
         print("Usage: ros2 run pet_robot_pkg nav2_goal_sender <object_name>")
         print("Example: ros2 run pet_robot_pkg nav2_goal_sender bowl")
+        rclpy.shutdown()
         return
 
     object_name = sys.argv[1]
 
     node = Nav2GoalSender()
-    node.send_goal_to_object(object_name)
 
-    rclpy.spin(node)
+    result = node.navigate_to_object(
+        object_name=object_name,
+        timeout_sec=60.0,
+        goal_tolerance_m=0.25
+    )
+
+    print(result)
+
+    node.destroy_node()
+    rclpy.shutdown()
 
 
 if __name__ == "__main__":
