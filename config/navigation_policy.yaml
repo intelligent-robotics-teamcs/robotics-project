@@ -1,0 +1,5 @@
+navigation:
+  timeout_sec: 60.0               # Time limit for reaching a single navigation goal
+  retry_count: 2                  # Number of times to retry reaching a navigation goal
+  goal_tolerance_m: 0.25          # Tolerance for considering a navigation goal reached
+  wait_between_targets_sec: 1.0   # Time to wait between navigating to different targets

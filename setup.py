@@ -10,7 +10,7 @@ setup(
 
     # scripts 폴더 사용
     packages=[
-    'scripts',
+    'script',
   ],
 
     data_files=[
@@ -41,7 +41,9 @@ setup(
     entry_points={
         'console_scripts': [
             # 실행 명령어
-            'nav2_goal_sender = scripts.nav2_goal_sender:main',
+            'nav2_goal_sender = script.nav2_goal_sender:main',
+            'multi_target_runner = script.multi_target_runner:main',
+            'test_pipeline = script.test_pipeline:main',
         ],
     },
 )

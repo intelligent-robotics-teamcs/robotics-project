@@ -17,6 +17,8 @@ class RobotTestPipeline:
         self.objects = None
         self.actions = None
         self.mapping = None
+        self.targets = None
+        self.navigation_policy = None
         self.passed = 0
         self.failed = 0
 
@@ -38,6 +40,14 @@ class RobotTestPipeline:
             with open(CONFIG_DIR / "mapping.yaml") as f:
                 self.mapping = yaml.safe_load(f)
             print("✓ mapping.yaml loaded")
+
+            with open(CONFIG_DIR / "target.yaml") as f:
+                self.targets = yaml.safe_load(f)
+            print("✓ target.yaml loaded")
+
+            with open(CONFIG_DIR / "navigation_policy.yaml") as f:
+                self.navigation_policy = yaml.safe_load(f)
+            print("✓ navigation_policy.yaml loaded")
 
             return True
         except Exception as e:
@@ -187,6 +197,145 @@ class RobotTestPipeline:
             self.failed += 1
             return False
 
+    def test_target_config(self):
+        """Test 7: target.yaml 검증"""
+        print("\n[Test 7] Target Configuration")
+
+        try:
+            assert "targets" in self.targets, "targets 없음"
+            targets = self.targets["targets"]
+
+            required_targets = [
+                "ball_zone",
+                "bowl_zone",
+                "bed_zone",
+                "chair_zone",
+                "car_zone",
+            ]
+
+            for target_name in required_targets:
+                assert target_name in targets, f"{target_name} 없음"
+
+                target = targets[target_name]
+
+                assert "frame_id" in target, f"{target_name}에 frame_id 없음"
+                assert "x" in target, f"{target_name}에 x 없음"
+                assert "y" in target, f"{target_name}에 y 없음"
+                assert "yaw" in target, f"{target_name}에 yaw 없음"
+
+                assert target["frame_id"] == "map", (
+                    f"{target_name} frame_id가 map이 아님"
+                )
+
+                float(target["x"])
+                float(target["y"])
+                float(target["yaw"])
+
+            print(f"  Total targets: {len(targets)}")
+            print("  Required static target zones exist")
+            print("✓ Target config OK")
+            self.passed += 1
+            return True
+
+        except (AssertionError, ValueError, TypeError) as e:
+            print(f"✗ {e}")
+            self.failed += 1
+            return False
+
+    def test_navigation_policy(self):
+        """Test 8: navigation_policy.yaml 검증"""
+        print("\n[Test 8] Navigation Policy")
+
+        try:
+            assert "navigation" in self.navigation_policy, "navigation 정책 없음"
+
+            navigation = self.navigation_policy["navigation"]
+
+            required_keys = [
+                "timeout_sec",
+                "retry_count",
+                "goal_tolerance_m",
+                "wait_between_targets_sec",
+            ]
+
+            for key in required_keys:
+                assert key in navigation, f"{key} 없음"
+
+            timeout_sec = float(navigation["timeout_sec"])
+            retry_count = int(navigation["retry_count"])
+            goal_tolerance_m = float(navigation["goal_tolerance_m"])
+            wait_between_targets_sec = float(
+                navigation["wait_between_targets_sec"]
+            )
+
+            assert timeout_sec > 0, "timeout_sec은 0보다 커야 함"
+            assert retry_count >= 0, "retry_count는 0 이상이어야 함"
+            assert goal_tolerance_m > 0, "goal_tolerance_m은 0보다 커야 함"
+            assert wait_between_targets_sec >= 0, (
+                "wait_between_targets_sec는 0 이상이어야 함"
+            )
+
+            print(f"  timeout_sec: {timeout_sec}")
+            print(f"  retry_count: {retry_count}")
+            print(f"  goal_tolerance_m: {goal_tolerance_m}")
+            print(f"  wait_between_targets_sec: {wait_between_targets_sec}")
+            print("✓ Navigation policy OK")
+            self.passed += 1
+            return True
+
+        except (AssertionError, ValueError, TypeError) as e:
+            print(f"✗ {e}")
+            self.failed += 1
+            return False
+
+    def test_static_target_resolver(self):
+        """Test 9: static object -> target pose resolve 검증"""
+        print("\n[Test 9] Static Target Resolver")
+
+        try:
+            # target_resolver.py와 동일한 static object mapping 기준
+            static_objects = {
+                "ball": "ball_zone",
+                "bowl": "bowl_zone",
+                "bed": "bed_zone",
+                "chair": "chair_zone",
+                "car": "car_zone",
+            }
+
+            targets = self.targets["targets"]
+
+            for object_name, target_name in static_objects.items():
+                assert object_name in self.objects["objects"], (
+                    f"{object_name} 객체 정의 없음"
+                )
+                assert target_name in targets, (
+                    f"{object_name}에 대응되는 {target_name} 없음"
+                )
+
+                pose = targets[target_name]
+
+                assert pose["frame_id"] == "map", (
+                    f"{target_name} frame_id가 map이 아님"
+                )
+
+                float(pose["x"])
+                float(pose["y"])
+                float(pose["yaw"])
+
+                print(
+                    f"  {object_name} -> {target_name} "
+                    f"(x={pose['x']}, y={pose['y']}, yaw={pose['yaw']})"
+                )
+
+            print("✓ Static target resolver OK")
+            self.passed += 1
+            return True
+
+        except (AssertionError, ValueError, TypeError) as e:
+            print(f"✗ {e}")
+            self.failed += 1
+            return False
+
     def run_all(self):
         """전체 테스트 실행"""
         print("=" * 50)
@@ -204,6 +353,9 @@ class RobotTestPipeline:
         self.test_mapping()
         self.test_scenario_dog_approach()
         self.test_scenario_car_safety()
+        self.test_target_config()
+        self.test_navigation_policy()
+        self.test_static_target_resolver()
 
         # 결과 출력
         print("\n" + "=" * 50)
@@ -212,7 +364,11 @@ class RobotTestPipeline:
 
         return self.failed == 0
 
-if __name__ == "__main__":
+def main():
     pipeline = RobotTestPipeline()
     success = pipeline.run_all()
     sys.exit(0 if success else 1)
+
+
+if __name__ == "__main__":
+    main()
