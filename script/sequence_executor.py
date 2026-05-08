@@ -56,8 +56,16 @@ class SequenceExecutor:
             return ActionStatus.INVALID_ACTION
 
         sequence = SCENARIOS[scenario_name]
+        return self.execute_sequence(sequence, sequence_name=scenario_name)
 
-        print(f"[SEQUENCE] Start scenario: {scenario_name}")
+    def execute_sequence(
+        self,
+        sequence: list[dict],
+        sequence_name: str = "custom",
+    ) -> ActionStatus:
+        self.results = []
+
+        print(f"[SEQUENCE] Start sequence: {sequence_name}")
 
         final_status = ActionStatus.SUCCESS
 
@@ -70,7 +78,7 @@ class SequenceExecutor:
                     break
         finally:
             self.shutdown()
-            self.print_summary(scenario_name, final_status)
+            self.print_summary(sequence_name, final_status)
 
         return final_status
 
@@ -199,7 +207,7 @@ class SequenceExecutor:
 
     def print_summary(self, scenario_name: str, final_status: ActionStatus):
         print("")
-        print(f"[SUMMARY] scenario={scenario_name} final_status={final_status.value}")
+        print(f"[SUMMARY] sequence={scenario_name} final_status={final_status.value}")
 
         for result in self.results:
             print(
