@@ -58,6 +58,8 @@ def normalize_detection(raw_detection: dict) -> dict | None:
     }
     """
 
+    # TODO: Convert the real YOLO result format here if the detector returns
+    # class IDs, tensor boxes, or xywh boxes instead of this YOLO-like dict.
     object_name = normalize_label(raw_detection.get("label"))
     if object_name is None:
         return None

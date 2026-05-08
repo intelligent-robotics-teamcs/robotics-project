@@ -63,6 +63,8 @@ class SequenceExecutor:
         sequence: list[dict],
         sequence_name: str = "custom",
     ) -> ActionStatus:
+        # TODO: Use this entry point from the future vision pipeline after
+        # detections are converted into executor-compatible action steps.
         self.results = []
 
         print(f"[SEQUENCE] Start sequence: {sequence_name}")

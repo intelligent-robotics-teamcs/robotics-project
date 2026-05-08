@@ -88,11 +88,15 @@ def build_sequence_from_detections(detections: list[dict]) -> list[dict]:
 
 
 def build_sequence_from_raw_detections(raw_detections: list[dict]) -> list[dict]:
+    # TODO: Call this from the camera/YOLO pipeline after image preprocessing
+    # and inference produce raw detection dictionaries.
     filtered_detections = filter_detections(raw_detections)
     return build_sequence_from_detections(filtered_detections)
 
 
 def main():
+    # TODO: Replace this fake detection list with actual YOLO detections from
+    # the Gazebo camera topic once the image subscriber and detector are ready.
     fake_detections = [
         {
             "label": "potted plant",
