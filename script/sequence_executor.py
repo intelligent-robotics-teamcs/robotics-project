@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 
 import sys
-import time
 from dataclasses import dataclass
 
 try:
+    from script import actions
     from script.action_schema import ActionStatus, validate_step
     from script.test_scenarios import SCENARIOS
 except ImportError:
+    import actions
     from action_schema import ActionStatus, validate_step
     from test_scenarios import SCENARIOS
 
@@ -32,21 +33,6 @@ class StepResult:
     object_name: str | None
     status: ActionStatus
     attempts: int
-
-
-def navigation_result_to_action_status(nav_result) -> ActionStatus:
-    if nav_result.success:
-        return ActionStatus.SUCCESS
-
-    state_value = nav_result.state.value
-
-    if state_value == "TIMEOUT":
-        return ActionStatus.TIMEOUT
-
-    if state_value == "REJECTED":
-        return ActionStatus.REJECTED
-
-    return ActionStatus.FAILED
 
 
 class SequenceExecutor:
@@ -152,38 +138,37 @@ class SequenceExecutor:
         params = step.get("params", {})
         nav_node = self._get_nav_node()
 
-        nav_result = nav_node.navigate_to_object(
+        return actions.approach_action(
+            node=nav_node,
             object_name=step["object"],
             timeout_sec=float(params.get("timeout_sec", 60.0)),
             goal_tolerance_m=float(params.get("goal_tolerance_m", 0.25)),
         )
 
-        status = navigation_result_to_action_status(nav_result)
-        print(f"[APPROACH] {status.value}: {nav_result.message}")
-        return status
-
     def execute_wait(self, step: dict) -> ActionStatus:
         duration_sec = float(step.get("params", {}).get("duration_sec", 0.0))
-        time.sleep(max(duration_sec, 0.0))
-        return ActionStatus.SUCCESS
+        return actions.wait_action(duration_sec=max(duration_sec, 0.0))
 
     def execute_observe(self, step: dict) -> ActionStatus:
         duration_sec = float(step.get("params", {}).get("duration_sec", 0.0))
         object_name = step.get("object")
-
-        print(f"[OBSERVE] placeholder object={object_name} duration={duration_sec:.1f}s")
-        time.sleep(max(duration_sec, 0.0))
-        return ActionStatus.SUCCESS
+        return actions.observe_action(
+            object_name=object_name,
+            duration_sec=max(duration_sec, 0.0),
+        )
 
     def execute_report(self, step: dict) -> ActionStatus:
         message = step.get("params", {}).get("message", "")
-        print(f"[REPORT] {message}")
-        return ActionStatus.SUCCESS
+        return actions.report_action(message=message)
 
     def execute_follow(self, step: dict) -> ActionStatus:
+        params = step.get("params", {})
         object_name = step.get("object")
-        print(f"[FOLLOW] placeholder not implemented object={object_name}")
-        return ActionStatus.SKIPPED
+        return actions.follow_action(
+            object_name=object_name,
+            duration_sec=max(float(params.get("duration_sec", 10.0)), 0.0),
+            safe_distance_m=float(params.get("safe_distance_m", 1.0)),
+        )
 
     def _get_nav_node(self):
         if self._nav_node is None:

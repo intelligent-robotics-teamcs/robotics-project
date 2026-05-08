@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
 
-import time
+from __future__ import annotations
 
-from script.action_schema import ActionStatus
+import time
+from typing import TYPE_CHECKING
 
 try:
-    from script.nav2_goal_sender import Nav2GoalSender
+    from script.action_schema import ActionStatus
 except ImportError:
-    from nav2_goal_sender import Nav2GoalSender
+    from action_schema import ActionStatus
+
+if TYPE_CHECKING:
+    try:
+        from script.nav2_goal_sender import Nav2GoalSender
+    except ImportError:
+        from nav2_goal_sender import Nav2GoalSender
 
 
 def approach_action(
