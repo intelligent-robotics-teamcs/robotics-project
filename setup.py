@@ -45,6 +45,7 @@ setup(
             'multi_target_runner = script.multi_target_runner:main',
             'test_pipeline = script.test_pipeline:main',
             'sequence_executor = script.sequence_executor:main',
+            'vision_to_executor = script.vision_to_executor:main',
         ],
     },
 )
