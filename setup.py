@@ -29,6 +29,7 @@ setup(
     install_requires=[
         'setuptools',
         'PyYAML',
+        'ultralytics',
     ],
 
     zip_safe=True,
