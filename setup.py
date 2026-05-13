@@ -47,6 +47,7 @@ setup(
             'test_pipeline = script.test_pipeline:main',
             'vision_to_executor = script.vision_to_executor:main',
             'camera_image_processor = script.camera_image_processor:main',
+            'run_yolo_inference = script.run_yolo_inference:main',
         ],
     },
 )
