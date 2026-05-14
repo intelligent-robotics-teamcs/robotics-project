@@ -24,6 +24,10 @@ setup(
         # config 파일 설치
         (os.path.join('share', package_name, 'config'),
             glob('config/*.yaml')),
+        (os.path.join('share', package_name, 'launch'),
+            glob('launch/*.launch.py')),
+        (os.path.join('share', package_name, 'worlds'),
+            glob('worlds/*')),
     ],
 
     install_requires=[

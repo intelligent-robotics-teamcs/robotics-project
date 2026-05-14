@@ -1398,10 +1398,10 @@
         </link>
       </model>
       <model name='unit_sphere'>
-        <pose>1.61919 0.400363 0.5 -0.036902 0.047807 -0.000882</pose>
+        <pose>1.35 0.398 0.166667 0 0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>1.61919 0.400363 0.5 -0.036902 0.047807 -0.000882</pose>
+          <pose>1.35 0.398 0.166667 0 0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
@@ -1432,12 +1432,12 @@
         <visual name='visual'>
           <geometry>
             <sphere>
-              <radius>0.5</radius>
+              <radius>0.166667</radius>
             </sphere>
           </geometry>
           <material>
             <script>
-              <name>Gazebo/Grey</name>
+              <name>Gazebo/Red</name>
               <uri>file://media/materials/scripts/gazebo.material</uri>
             </script>
             <shader type='pixel'/>
@@ -1452,7 +1452,7 @@
           <pose>0 0 0 0 -0 0</pose>
           <geometry>
             <sphere>
-              <radius>0.5</radius>
+              <radius>0.166667</radius>
             </sphere>
           </geometry>
           <surface>
@@ -1502,9 +1502,9 @@
           </surface>
         </collision>
       </link>
-      <static>0</static>
+      <static>1</static>
       <allow_auto_disable>1</allow_auto_disable>
-      <pose>1.61919 0.400363 0.5 -0.036902 0.047807 -0.000882</pose>
+      <pose>1.35 0.398 0.166667 0 0 0</pose>
     </model>
   </world>
 </sdf>
