@@ -3,6 +3,10 @@ from glob import glob
 import os
 
 package_name = 'pet_robot_pkg'
+world_files = [
+    path for path in glob('worlds/*')
+    if os.path.isfile(path)
+]
 
 setup(
     name=package_name,
@@ -24,11 +28,16 @@ setup(
         # config 파일 설치
         (os.path.join('share', package_name, 'config'),
             glob('config/*.yaml')),
+        (os.path.join('share', package_name, 'launch'),
+            glob('launch/*.launch.py')),
+        (os.path.join('share', package_name, 'worlds'),
+            world_files),
     ],
 
     install_requires=[
         'setuptools',
         'PyYAML',
+        'ultralytics',
     ],
 
     zip_safe=True,
@@ -46,6 +55,7 @@ setup(
             'test_pipeline = script.test_pipeline:main',
             'vision_to_executor = script.vision_to_executor:main',
             'camera_image_processor = script.camera_image_processor:main',
+            'run_yolo_inference = script.run_yolo_inference:main',
         ],
     },
 )
