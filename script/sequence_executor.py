@@ -44,7 +44,8 @@ class SequenceExecutor:
     state.
     """
 
-    def __init__(self):
+    def __init__(self, shutdown_rclpy: bool = True):
+        self.shutdown_rclpy = shutdown_rclpy
         self._nav_node = None
         self._rclpy = None
         self.results: list[StepResult] = []
@@ -202,7 +203,11 @@ class SequenceExecutor:
             self._nav_node.destroy_node()
             self._nav_node = None
 
-        if self._rclpy is not None and self._rclpy.ok():
+        if (
+            self.shutdown_rclpy
+            and self._rclpy is not None
+            and self._rclpy.ok()
+        ):
             self._rclpy.shutdown()
 
         self._rclpy = None

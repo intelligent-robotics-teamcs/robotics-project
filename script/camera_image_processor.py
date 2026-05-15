@@ -46,7 +46,7 @@ class CameraImageProcessor(Node):
         self.last_yolo_debug = {}
 
         self.image_size = int(self.get_parameter("image_size").value)
-        self.enable_display = bool(self.get_parameter("enable_display").value)
+        self.enable_display = self.get_bool_parameter("enable_display")
         self.run_every_n_frames = max(
             1,
             int(self.get_parameter("run_every_n_frames").value),
@@ -99,7 +99,7 @@ class CameraImageProcessor(Node):
             ),
             image_size=self.image_size,
             device=device,
-            verbose=bool(self.get_parameter("yolo_verbose").value),
+            verbose=self.get_bool_parameter("yolo_verbose"),
         )
 
         try:
@@ -116,6 +116,17 @@ class CameraImageProcessor(Node):
             f"device={config.device or 'auto'}"
         )
         return detector
+
+    def get_bool_parameter(self, name):
+        value = self.get_parameter(name).value
+
+        if isinstance(value, bool):
+            return value
+
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on"}
+
+        return bool(value)
 
     def image_callback(self, msg):
         try:

@@ -38,6 +38,7 @@ setup(
         'setuptools',
         'PyYAML',
         'ultralytics',
+        'objaverse',
     ],
 
     zip_safe=True,
@@ -53,9 +54,12 @@ setup(
             'nav2_goal_sender = script.nav2_goal_sender:main',
             'multi_target_runner = script.multi_target_runner:main',
             'test_pipeline = script.test_pipeline:main',
+            'sequence_executor = script.sequence_executor:main',
             'vision_to_executor = script.vision_to_executor:main',
             'camera_image_processor = script.camera_image_processor:main',
+            'vision_sequence_executor = script.vision_sequence_executor:main',
             'run_yolo_inference = script.run_yolo_inference:main',
+            'download_objaverse_models = script.download_objaverse_models:main',
         ],
     },
 )
