@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
-import threading
+import subprocess
+import tempfile
 import time
+from pathlib import Path
 
 import rclpy
 from rclpy.node import Node
@@ -12,18 +14,17 @@ from std_msgs.msg import String
 
 try:
     from script.action_schema import ActionStatus
-    from script.sequence_executor import SequenceExecutor
 except ImportError:
     from action_schema import ActionStatus
-    from sequence_executor import SequenceExecutor
 
 
 class VisionSequenceExecutorNode(Node):
     """
-    Bridge vision output to the blocking sequence executor.
+    Bridge vision output to the sequence executor in a separate process.
 
-    camera_image_processor publishes JSON action steps. This node subscribes,
-    deduplicates repeated frames, and executes one sequence at a time.
+    SequenceExecutor/Nav2GoalSender spin their own rclpy node while waiting for
+    Nav2 action futures. Keeping that blocking navigation in a subprocess avoids
+    corrupting this subscriber node's executor/context.
     """
 
     def __init__(self):
@@ -35,6 +36,7 @@ class VisionSequenceExecutorNode(Node):
         self.declare_parameter("deduplicate_sequences", True)
         self.declare_parameter("cooldown_sec", 5.0)
         self.declare_parameter("ignore_empty_sequences", True)
+        self.declare_parameter("poll_period_sec", 0.2)
 
         self.execute_once = self.get_bool_parameter("execute_once")
         self.deduplicate_sequences = self.get_bool_parameter(
@@ -44,12 +46,14 @@ class VisionSequenceExecutorNode(Node):
         self.ignore_empty_sequences = self.get_bool_parameter(
             "ignore_empty_sequences"
         )
+        poll_period_sec = max(float(self.get_parameter("poll_period_sec").value), 0.05)
 
-        self._is_executing = False
+        self._process = None
+        self._sequence_file = None
+        self._current_sequence = []
         self._has_executed = False
         self._last_sequence_key = None
         self._last_execution_time = 0.0
-        self._lock = threading.Lock()
 
         action_sequence_topic = str(self.get_parameter("action_sequence_topic").value)
         execution_status_topic = str(
@@ -67,6 +71,7 @@ class VisionSequenceExecutorNode(Node):
             self.sequence_callback,
             10,
         )
+        self.poll_timer = self.create_timer(poll_period_sec, self.poll_process)
 
         self.get_logger().info(
             "[VISION_EXECUTOR] subscribed to "
@@ -111,63 +116,95 @@ class VisionSequenceExecutorNode(Node):
         sequence_key = json.dumps(sequence, sort_keys=True)
         now = time.monotonic()
 
-        with self._lock:
-            if self._is_executing:
-                self.get_logger().info("[VISION_EXECUTOR] already executing; skipped")
-                return
+        if self._process is not None:
+            self.get_logger().info("[VISION_EXECUTOR] already executing; skipped")
+            return
 
-            if self.execute_once and self._has_executed:
-                return
+        if self.execute_once and self._has_executed:
+            return
 
-            if (
-                self.deduplicate_sequences
-                and sequence_key == self._last_sequence_key
-                and now - self._last_execution_time < self.cooldown_sec
-            ):
-                return
+        if (
+            self.deduplicate_sequences
+            and sequence_key == self._last_sequence_key
+            and now - self._last_execution_time < self.cooldown_sec
+        ):
+            return
 
-            self._is_executing = True
-            self._last_sequence_key = sequence_key
-            self._last_execution_time = now
+        self.start_sequence_process(sequence, sequence_key, now)
 
-        worker = threading.Thread(
-            target=self.execute_sequence_worker,
-            args=(sequence,),
-            daemon=True,
+    def start_sequence_process(self, sequence, sequence_key, now):
+        sequence_file = tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            suffix=".json",
+            prefix="vision_sequence_",
+            delete=False,
         )
-        worker.start()
+        with sequence_file:
+            json.dump(sequence, sequence_file, ensure_ascii=False)
 
-    def execute_sequence_worker(self, sequence: list[dict]):
-        sequence_name = f"vision_{int(time.time())}"
-        self.publish_status("started", sequence, ActionStatus.RUNNING.value)
+        command = [
+            "ros2",
+            "run",
+            "pet_robot_pkg",
+            "sequence_executor",
+            "--",
+            "--sequence-file",
+            sequence_file.name,
+            "--sequence-name",
+            f"vision_{int(time.time())}",
+        ]
+
+        self._process = subprocess.Popen(command)
+        self._sequence_file = sequence_file.name
+        self._current_sequence = sequence
+        self._last_sequence_key = sequence_key
+        self._last_execution_time = now
 
         self.get_logger().info(
-            "[VISION_EXECUTOR] executing sequence: "
-            f"steps={len(sequence)} name={sequence_name}"
+            "[VISION_EXECUTOR] started sequence process: "
+            f"pid={self._process.pid} steps={len(sequence)}"
+        )
+        self.publish_status("started", sequence, ActionStatus.RUNNING.value)
+
+    def poll_process(self):
+        if self._process is None:
+            return
+
+        return_code = self._process.poll()
+        if return_code is None:
+            return
+
+        sequence = self._current_sequence
+        status = (
+            ActionStatus.SUCCESS.value
+            if return_code == 0
+            else ActionStatus.FAILED.value
+        )
+        self.publish_status(
+            "finished",
+            sequence,
+            status,
+            message=f"sequence process exited with code {return_code}",
         )
 
-        executor = SequenceExecutor(shutdown_rclpy=False)
+        self.get_logger().info(
+            "[VISION_EXECUTOR] sequence process finished: "
+            f"pid={self._process.pid} return_code={return_code}"
+        )
 
-        try:
-            final_status = executor.execute_sequence(
-                sequence,
-                sequence_name=sequence_name,
-            )
-        except Exception as exc:
-            self.get_logger().error(f"[VISION_EXECUTOR] execution error: {exc}")
-            self.publish_status(
-                "error",
-                sequence,
-                ActionStatus.FAILED.value,
-                message=str(exc),
-            )
-            final_status = ActionStatus.FAILED
-        else:
-            self.publish_status("finished", sequence, final_status.value)
-        finally:
-            with self._lock:
-                self._is_executing = False
-                self._has_executed = True
+        if self._sequence_file:
+            try:
+                Path(self._sequence_file).unlink(missing_ok=True)
+            except OSError as exc:
+                self.get_logger().warn(
+                    f"[VISION_EXECUTOR] failed to remove temp file: {exc}"
+                )
+
+        self._process = None
+        self._sequence_file = None
+        self._current_sequence = []
+        self._has_executed = True
 
     def publish_status(
         self,
@@ -186,6 +223,12 @@ class VisionSequenceExecutorNode(Node):
         self.status_publisher.publish(
             String(data=json.dumps(payload, ensure_ascii=False))
         )
+
+    def destroy_node(self):
+        if self._process is not None and self._process.poll() is None:
+            self._process.terminate()
+
+        super().destroy_node()
 
 
 def main(args=None):

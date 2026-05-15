@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import sys
+import argparse
+import json
 from dataclasses import dataclass
 
 try:
@@ -227,17 +229,50 @@ class SequenceExecutor:
             )
 
 
-def main(args=None):
-    argv = list(sys.argv if args is None else args)
+def load_sequence_file(path: str) -> list[dict]:
+    with open(path, "r", encoding="utf-8") as file:
+        sequence = json.load(file)
 
-    if len(argv) < 2:
-        print("Usage: ros2 run pet_robot_pkg sequence_executor <scenario_name>")
+    if not isinstance(sequence, list):
+        raise ValueError("sequence file must contain a list")
+
+    return sequence
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("scenario_name", nargs="?")
+    parser.add_argument("--sequence-file")
+    parser.add_argument("--sequence-name", default="custom")
+    return parser
+
+
+def main(args=None):
+    argv = list(sys.argv[1:] if args is None else args)
+    if argv and argv[0] == "--":
+        argv = argv[1:]
+
+    parser = build_parser()
+    parsed_args = parser.parse_args(argv)
+
+    executor = SequenceExecutor()
+
+    if parsed_args.sequence_file:
+        sequence = load_sequence_file(parsed_args.sequence_file)
+        status = executor.execute_sequence(
+            sequence,
+            sequence_name=parsed_args.sequence_name,
+        )
+    elif parsed_args.scenario_name:
+        status = executor.execute_scenario(parsed_args.scenario_name)
+    else:
+        print(
+            "Usage: ros2 run pet_robot_pkg sequence_executor <scenario_name>\n"
+            "   or: ros2 run pet_robot_pkg sequence_executor -- "
+            "--sequence-file <path> [--sequence-name <name>]"
+        )
         print(f"Available scenarios: {', '.join(sorted(SCENARIOS.keys()))}")
         return
-
-    scenario_name = argv[1]
-    executor = SequenceExecutor()
-    status = executor.execute_scenario(scenario_name)
 
     if status == ActionStatus.SUCCESS:
         return
