@@ -23,6 +23,24 @@ DEFAULT_ALIASES = {
     "potted_plant": ["potted plant", "plant pot", "houseplant", "plant"],
 }
 
+DEFAULT_LVIS_CATEGORIES = {
+    "dog": ["dog"],
+    "cat": ["cat"],
+    "person": ["person"],
+    "ball": [
+        "ball",
+        "baseball",
+        "basketball",
+        "soccer ball",
+        "tennis ball",
+        "volleyball",
+    ],
+    "bowl": ["bowl"],
+    "bed": ["bed"],
+    "chair": ["chair"],
+    "potted_plant": ["potted plant", "flowerpot"],
+}
+
 
 def load_object_names(config_path: Path) -> list[str]:
     with config_path.open("r", encoding="utf-8") as file:
@@ -88,6 +106,51 @@ def score_annotation(annotation: dict, aliases: list[str]) -> int:
     return score
 
 
+def find_lvis_categories(
+    lvis_annotations: dict[str, list[str]],
+    object_name: str,
+) -> list[str]:
+    category_aliases = DEFAULT_LVIS_CATEGORIES.get(
+        object_name,
+        [object_name, object_name.replace("_", " ")],
+    )
+    normalized_aliases = {
+        normalize_text(alias)
+        for alias in category_aliases
+    }
+
+    matches = []
+    for category in lvis_annotations:
+        normalized_category = normalize_text(category)
+        if normalized_category in normalized_aliases:
+            matches.append(category)
+
+    return sorted(matches)
+
+
+def collect_lvis_uids(
+    lvis_annotations: dict[str, list[str]],
+    object_name: str,
+    max_uids: int,
+) -> tuple[list[str], list[str]]:
+    categories = find_lvis_categories(lvis_annotations, object_name)
+    collected_uids = []
+    seen_uids = set()
+
+    for category in categories:
+        for uid in lvis_annotations[category]:
+            if uid in seen_uids:
+                continue
+
+            seen_uids.add(uid)
+            collected_uids.append(uid)
+
+            if len(collected_uids) >= max_uids:
+                return collected_uids, categories
+
+    return collected_uids, categories
+
+
 def select_candidates(
     annotations: dict[str, dict],
     object_name: str,
@@ -126,6 +189,36 @@ def select_candidates(
         reverse=True,
     )
     return candidates[:max_count]
+
+
+def select_candidates_from_lvis(
+    objaverse_module,
+    lvis_annotations: dict[str, list[str]],
+    object_name: str,
+    max_count: int,
+    license_filter: str,
+    min_score: int,
+    uid_candidates: int,
+) -> tuple[list[tuple[str, dict, int]], list[str], int]:
+    uid_pool, categories = collect_lvis_uids(
+        lvis_annotations=lvis_annotations,
+        object_name=object_name,
+        max_uids=uid_candidates,
+    )
+
+    if not uid_pool:
+        return [], categories, 0
+
+    annotations = objaverse_module.load_annotations(uid_pool)
+    candidates = select_candidates(
+        annotations=annotations,
+        object_name=object_name,
+        max_count=max_count,
+        license_filter=license_filter,
+        min_score=min_score,
+    )
+
+    return candidates, categories, len(uid_pool)
 
 
 def copy_downloaded_models(
@@ -176,7 +269,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Object names to download. Defaults to every object in config.",
     )
     parser.add_argument("--max-per-object", type=int, default=1)
-    parser.add_argument("--min-score", type=int, default=25)
+    parser.add_argument(
+        "--min-score",
+        type=int,
+        default=0,
+        help=(
+            "Optional metadata text-match score filter after LVIS category "
+            "selection. Defaults to 0 because LVIS already narrows the class."
+        ),
+    )
+    parser.add_argument(
+        "--uid-candidates-per-object",
+        type=int,
+        default=100,
+        help=(
+            "Maximum LVIS UIDs per object to inspect with load_annotations(). "
+            "Keeps memory bounded."
+        ),
+    )
     parser.add_argument(
         "--license",
         default="by",
@@ -210,20 +320,27 @@ def main(argv: list[str] | None = None) -> int:
             "objaverse is required. Install it with: pip install objaverse"
         ) from exc
 
-    print("[OBJAVERSE] loading annotations")
-    annotations = objaverse.load_annotations()
+    print("[OBJAVERSE] loading LVIS annotations")
+    lvis_annotations = objaverse.load_lvis_annotations()
 
     selected: dict[str, list[tuple[str, dict, int]]] = {}
     for object_name in object_names:
-        candidates = select_candidates(
-            annotations=annotations,
+        candidates, categories, uid_pool_size = select_candidates_from_lvis(
+            objaverse_module=objaverse,
+            lvis_annotations=lvis_annotations,
             object_name=object_name,
             max_count=max(1, args.max_per_object),
             license_filter=args.license,
             min_score=args.min_score,
+            uid_candidates=max(1, args.uid_candidates_per_object),
         )
         selected[object_name] = candidates
-        print(f"[OBJAVERSE] {object_name}: selected {len(candidates)} candidate(s)")
+        print(
+            f"[OBJAVERSE] {object_name}: "
+            f"LVIS categories={categories or 'none'} "
+            f"inspected_uids={uid_pool_size} "
+            f"selected={len(candidates)}"
+        )
         for uid, annotation, score in candidates:
             print(
                 "  "
