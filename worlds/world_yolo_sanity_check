@@ -1397,21 +1397,11 @@
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='unit_sphere'>
-        <pose>1.35 0.398 0.166667 0 0 0</pose>
-        <scale>1 1 1</scale>
-        <link name='link'>
-          <pose>1.35 0.398 0.166667 0 0 0</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>0 0 0 0 -0 0</acceleration>
-          <wrench>0 0 0 0 -0 0</wrench>
-        </link>
-      </model>
       <light name='sun'>
         <pose>0 0 10 0 -0 0</pose>
       </light>
     </state>
-    <model name='unit_sphere'>
+    <model name='objaverse_ball'>
       <link name='link'>
         <inertial>
           <mass>1</mass>
@@ -1431,17 +1421,11 @@
         <pose>0 0 0 -0 -0 -0</pose>
         <visual name='visual'>
           <geometry>
-            <sphere>
-              <radius>0.166667</radius>
-            </sphere>
+            <mesh>
+              <uri>model://pet_robot_pkg/models/objaverse/ball/c94d08a3c24349bbbbd7213532cd05ee.glb</uri>
+              <scale>0.35 0.35 0.35</scale>
+            </mesh>
           </geometry>
-          <material>
-            <script>
-              <name>Gazebo/Red</name>
-              <uri>file://media/materials/scripts/gazebo.material</uri>
-            </script>
-            <shader type='pixel'/>
-          </material>
           <pose>0 0 0 0 -0 0</pose>
           <transparency>0</transparency>
           <cast_shadows>1</cast_shadows>
@@ -1452,7 +1436,7 @@
           <pose>0 0 0 0 -0 0</pose>
           <geometry>
             <sphere>
-              <radius>0.166667</radius>
+              <radius>0.18</radius>
             </sphere>
           </geometry>
           <surface>
@@ -1504,7 +1488,93 @@
       </link>
       <static>1</static>
       <allow_auto_disable>1</allow_auto_disable>
-      <pose>1.35 0.398 0.166667 0 0 0</pose>
+      <pose>1.15 0.40 0.18 0 0 0</pose>
+    </model>
+    <model name='objaverse_bowl'>
+      <link name='link'>
+        <inertial>
+          <mass>1</mass>
+          <inertia>
+            <ixx>0.1</ixx>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyy>0.1</iyy>
+            <iyz>0</iyz>
+            <izz>0.1</izz>
+          </inertia>
+          <pose>0 0 0 0 -0 0</pose>
+        </inertial>
+        <self_collide>0</self_collide>
+        <enable_wind>0</enable_wind>
+        <kinematic>0</kinematic>
+        <pose>0 0 0 0 -0 0</pose>
+        <visual name='visual'>
+          <geometry>
+            <mesh>
+              <uri>model://pet_robot_pkg/models/objaverse/bowl/842e26f631d948b08fcf178b557aa99f.glb</uri>
+              <scale>0.45 0.45 0.45</scale>
+            </mesh>
+          </geometry>
+          <pose>0 0 0 0 -0 0</pose>
+          <transparency>0</transparency>
+          <cast_shadows>1</cast_shadows>
+        </visual>
+        <collision name='collision'>
+          <pose>0 0 0.08 0 -0 0</pose>
+          <geometry>
+            <box>
+              <size>0.35 0.35 0.16</size>
+            </box>
+          </geometry>
+          <max_contacts>10</max_contacts>
+        </collision>
+      </link>
+      <static>1</static>
+      <allow_auto_disable>1</allow_auto_disable>
+      <pose>1.35 0.20 0.02 0 0 0</pose>
+    </model>
+    <model name='objaverse_chair'>
+      <link name='link'>
+        <inertial>
+          <mass>1</mass>
+          <inertia>
+            <ixx>0.1</ixx>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyy>0.1</iyy>
+            <iyz>0</iyz>
+            <izz>0.1</izz>
+          </inertia>
+          <pose>0 0 0 0 -0 0</pose>
+        </inertial>
+        <self_collide>0</self_collide>
+        <enable_wind>0</enable_wind>
+        <kinematic>0</kinematic>
+        <pose>0 0 0 0 -0 0</pose>
+        <visual name='visual'>
+          <geometry>
+            <mesh>
+              <uri>model://pet_robot_pkg/models/objaverse/chair/c5f49f97856c461a8192fb950ce23540.glb</uri>
+              <scale>0.55 0.55 0.55</scale>
+            </mesh>
+          </geometry>
+          <pose>0 0 0 0 -0 0</pose>
+          <transparency>0</transparency>
+          <cast_shadows>1</cast_shadows>
+        </visual>
+        <collision name='collision'>
+          <pose>0 0 0.35 0 -0 0</pose>
+          <geometry>
+            <box>
+              <size>0.55 0.55 0.70</size>
+            </box>
+          </geometry>
+          <max_contacts>10</max_contacts>
+        </collision>
+      </link>
+      <static>1</static>
+      <allow_auto_disable>1</allow_auto_disable>
+      <pose>1.70 0.58 0.02 0 0 3.14159</pose>
     </model>
   </world>
 </sdf>

@@ -1,0 +1,32 @@
+[
+  {
+    "object": "ball",
+    "uid": "c94d08a3c24349bbbbd7213532cd05ee",
+    "score": 395,
+    "name": "Basketball",
+    "license": "by",
+    "viewerUrl": "https://sketchfab.com/3d-models/c94d08a3c24349bbbbd7213532cd05ee",
+    "source_path": "/home/rlyryu/.objaverse/hf-objaverse-v1/glbs/000-074/c94d08a3c24349bbbbd7213532cd05ee.glb",
+    "output_path": "models/objaverse/ball/c94d08a3c24349bbbbd7213532cd05ee.glb"
+  },
+  {
+    "object": "bowl",
+    "uid": "842e26f631d948b08fcf178b557aa99f",
+    "score": 125,
+    "name": "Bowl",
+    "license": "by",
+    "viewerUrl": "https://sketchfab.com/3d-models/842e26f631d948b08fcf178b557aa99f",
+    "source_path": "/home/rlyryu/.objaverse/hf-objaverse-v1/glbs/000-042/842e26f631d948b08fcf178b557aa99f.glb",
+    "output_path": "models/objaverse/bowl/842e26f631d948b08fcf178b557aa99f.glb"
+  },
+  {
+    "object": "chair",
+    "uid": "c5f49f97856c461a8192fb950ce23540",
+    "score": 195,
+    "name": "Chair",
+    "license": "by",
+    "viewerUrl": "https://sketchfab.com/3d-models/c5f49f97856c461a8192fb950ce23540",
+    "source_path": "/home/rlyryu/.objaverse/hf-objaverse-v1/glbs/000-087/c5f49f97856c461a8192fb950ce23540.glb",
+    "output_path": "models/objaverse/chair/c5f49f97856c461a8192fb950ce23540.glb"
+  }
+]
