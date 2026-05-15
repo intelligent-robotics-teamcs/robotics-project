@@ -7,15 +7,15 @@
 targets:
   ball_zone:
     frame_id: "map"
-    x: 1.15
-    y: 0.40
+    x: 0.47
+    y: -0.60
     yaw: 0.0
     description: "Ball location for play"
     
   bowl_zone:
     frame_id: "map"
-    x: 1.35
-    y: 0.20
+    x: 0.47
+    y: -0.85
     yaw: 0.0
     description: "Food bowl position"
 
@@ -28,8 +28,8 @@ targets:
 
   chair_zone:
     frame_id: "map"
-    x: 1.70
-    y: 0.58
+    x: 0.47
+    y: -1.10
     yaw: 0.0
     description: "Chair area"
 
