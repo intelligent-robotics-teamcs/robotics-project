@@ -17,9 +17,10 @@ def generate_launch_description():
         "world_yolo_sanity_check",
     )
     model_path = os.path.join(turtlebot3_share_dir, "models")
+    package_model_path = os.path.join(package_share_dir, "models")
     gazebo_model_path = os.environ.get("GAZEBO_MODEL_PATH", "")
     gazebo_model_paths = os.pathsep.join(
-        path for path in [model_path, gazebo_model_path] if path
+        path for path in [model_path, package_model_path, gazebo_model_path] if path
     )
 
     gazebo_launch = os.path.join(

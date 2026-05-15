@@ -7,6 +7,10 @@ world_files = [
     path for path in glob('worlds/*')
     if os.path.isfile(path)
 ]
+model_files = [
+    path for path in glob('models/**/*', recursive=True)
+    if os.path.isfile(path)
+]
 
 setup(
     name=package_name,
@@ -32,6 +36,13 @@ setup(
             glob('launch/*.launch.py')),
         (os.path.join('share', package_name, 'worlds'),
             world_files),
+        *[
+            (
+                os.path.join('share', package_name, os.path.dirname(path)),
+                [path],
+            )
+            for path in model_files
+        ],
     ],
 
     install_requires=[
