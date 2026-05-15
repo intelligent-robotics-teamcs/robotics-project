@@ -1488,7 +1488,7 @@
       </link>
       <static>1</static>
       <allow_auto_disable>1</allow_auto_disable>
-      <pose>1.15 0.40 0.18 0 0 0</pose>
+      <pose>0.48 -0.35 0.18 0 0 0</pose>
     </model>
     <model name='objaverse_bowl'>
       <link name='link'>
@@ -1531,7 +1531,7 @@
       </link>
       <static>1</static>
       <allow_auto_disable>1</allow_auto_disable>
-      <pose>1.35 0.20 0.02 0 0 0</pose>
+      <pose>0.20 -0.65 0.02 0 0 0</pose>
     </model>
     <model name='objaverse_chair'>
       <link name='link'>
@@ -1574,7 +1574,7 @@
       </link>
       <static>1</static>
       <allow_auto_disable>1</allow_auto_disable>
-      <pose>1.70 0.58 0.02 0 0 3.14159</pose>
+      <pose>0.78 -0.65 0.02 0 0 3.14159</pose>
     </model>
   </world>
 </sdf>
