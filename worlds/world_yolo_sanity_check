@@ -1516,7 +1516,7 @@
           <geometry>
             <mesh>
               <uri>model://bowl.obj</uri>
-              <scale>0.012 0.012 0.012</scale>
+              <scale>0.003 0.003 0.003</scale>
             </mesh>
           </geometry>
           <pose>0 0 0 0 -0 0</pose>
@@ -1531,7 +1531,7 @@
           <pose>0 0 0 0 -0 0</pose>
           <geometry>
             <box>
-              <size>0.30 0.30 0.18</size>
+              <size>0.08 0.08 0.05</size>
             </box>
           </geometry>
           <max_contacts>10</max_contacts>
@@ -1569,6 +1569,18 @@
           <pose>0 0 0 0 -0 0</pose>
           <transparency>0</transparency>
           <cast_shadows>1</cast_shadows>
+          <material>
+            <ambient>0.1 0.45 1 1</ambient>
+            <diffuse>0.1 0.45 1 1</diffuse>
+          </material>
+        </visual>
+        <visual name='debug_box_visual'>
+          <pose>0 0 0 0 -0 0</pose>
+          <geometry>
+            <box>
+              <size>0.30 0.30 0.35</size>
+            </box>
+          </geometry>
           <material>
             <ambient>0.1 0.45 1 1</ambient>
             <diffuse>0.1 0.45 1 1</diffuse>
