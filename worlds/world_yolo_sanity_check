@@ -1515,7 +1515,7 @@
         <visual name='visual'>
           <geometry>
             <mesh>
-              <uri>model://bowl.obj</uri>
+              <uri>model://bowl.dae</uri>
               <scale>0.003 0.003 0.003</scale>
             </mesh>
           </geometry>
@@ -1562,7 +1562,7 @@
         <visual name='visual'>
           <geometry>
             <mesh>
-              <uri>model://chair.obj</uri>
+              <uri>model://chair.dae</uri>
               <scale>0.004 0.004 0.004</scale>
             </mesh>
           </geometry>
