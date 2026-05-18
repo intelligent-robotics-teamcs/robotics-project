@@ -22,6 +22,7 @@ LABEL_MAP = {
     "chair": "chair",
     "potted plant": "potted_plant",
     "potted_plant": "potted_plant",
+    "stop sign": "ball",    # For sanity check(YOLO classifies "ball" as "stop sign", UNWANTED !!)
 }
 
 VALID_VISION_LABELS = set(LABEL_MAP)
