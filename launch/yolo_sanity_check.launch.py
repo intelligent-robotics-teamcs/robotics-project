@@ -6,6 +6,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, SetEnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import Command
 from launch_ros.actions import Node
 
 
@@ -24,6 +25,7 @@ def generate_launch_description():
         "urdf",
         f"turtlebot3_{turtlebot3_model}.urdf",
     )
+    robot_description = Command(["xacro ", urdf_path])
     model_path = os.path.join(turtlebot3_share_dir, "models")
     package_model_path = os.path.join(package_share_dir, "models")
     gazebo_model_path = os.environ.get("GAZEBO_MODEL_PATH", "")
@@ -49,8 +51,12 @@ def generate_launch_description():
                 executable="robot_state_publisher",
                 name="robot_state_publisher",
                 output="screen",
-                parameters=[{"use_sim_time": True}],
-                arguments=[urdf_path],
+                parameters=[
+                    {
+                        "use_sim_time": True,
+                        "robot_description": robot_description,
+                    }
+                ],
             ),
         ]
     )
