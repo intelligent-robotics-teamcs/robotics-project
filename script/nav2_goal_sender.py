@@ -45,30 +45,25 @@ class NavigationResult:
 
 
 class Nav2GoalSender(Node):
-    """
-    Single-goal navigation executor.
-
-    Responsibility:
-    - object name -> pose
-    - send NavigateToPose goal
-    - track feedback distance
-    - judge success/failure
-    - handle timeout
-    """
-
     def __init__(self):
         super().__init__("nav2_goal_sender")
-        if self.has_parameter("use_sim_time"):
-            self.set_parameters(
-                [Parameter("use_sim_time", Parameter.Type.BOOL, True)]
+
+        try:
+            if not self.has_parameter("use_sim_time"):
+                self.declare_parameter("use_sim_time", True)
+
+            self.set_parameters([
+                Parameter("use_sim_time", Parameter.Type.BOOL, True)
+            ])
+        except Exception as e:
+            self.get_logger().warn(
+                f"Failed to set use_sim_time automatically: {e}"
             )
-        else:
-            self.declare_parameter("use_sim_time", True)
 
         self._action_client = ActionClient(
             self,
             NavigateToPose,
-            "navigate_to_pose"
+            "navigate_to_pose",
         )
 
         self.resolver = TargetResolver()

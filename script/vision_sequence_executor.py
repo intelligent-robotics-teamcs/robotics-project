@@ -107,14 +107,19 @@ class VisionSequenceExecutorNode(Node):
 
     def extract_sequence(self, payload):
         """
-        Supports both:
+        Supports:
         1. {"sequence": [...]}
-        2. [...]
+        2. {"steps": [...]}
+        3. {"action_sequence": [...]}
+        4. [...]
         """
 
         if isinstance(payload, dict):
-            sequence = payload.get("sequence", [])
-            return sequence
+            for key in ("sequence", "steps", "action_sequence"):
+                sequence = payload.get(key)
+                if isinstance(sequence, list):
+                    return sequence
+            return []
 
         if isinstance(payload, list):
             return payload

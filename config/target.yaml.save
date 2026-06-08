@@ -1,0 +1,58 @@
+# Static objects: ball, bed, apple, vase, chair, cat
+# Dynamic objects: person, dog
+
+# Static object positions should match the world model poses.
+
+
+targets:
+  ball_zone:
+    frame_id: "map"
+    x: 0.47
+    y: -0.60
+    yaw: 0.0
+    description: "Ball location for play"
+    
+  apple_zone:
+    frame_id: "map"
+    x: 0.0
+    y: -2.20
+    yaw: 0.0
+    description: "Food position"
+
+  bed_zone:
+    frame_id: "map"
+    x: -2.40
+    y: 1.70
+    yaw: 3.1416
+    description: "Bed location"
+
+  chair_zone:
+    frame_id: "map"
+    x: -1.80
+    y: -1.50
+    yaw: 2.3562
+    description: "Chair area"
+
+  cat_zone:
+    frame_id: "map"
+    x: 1.80
+    y: -1.35
+    yaw: -1.5708
+    description: "Cat location for sanity check"
+
+  safe_observe_zone:
+    frame_id: "map"
+    x: 2.0
+    y: 1.0
+    yaw: 0.0
+    description: "Safe observation point for dangerous object"
+
+  vase_zone:
+    frame_id: "map"
+    x: 0.10
+    y: 2.30
+    yaw: 0.0
+    description: "Vase rvation-only zone"
+
+# Dynamic targets (people, dogs) will be detected and tracked in real-time,
+# so their positions are not predefined in this configuration.

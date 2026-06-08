@@ -18,42 +18,24 @@ if TYPE_CHECKING:
         from nav2_goal_sender import Nav2GoalSender
 
 
+
 def approach_action(
-    node: Nav2GoalSender,
+    node,
     object_name: str,
     timeout_sec: float = 60.0,
-    goal_tolerance_m: float = 0.25,
-) -> ActionStatus:
-    """
-    target object 위치로 한 번 이동하는 action.
-    retry는 sequence_executor에서 담당
-    """
+    goal_tolerance_m: float = 0.35,
+    retry_count: int = 0,
+):
+    node.get_logger().info(
+        f"[APPROACH] using direct odom approach for {object_name}"
+    )
 
-    node.get_logger().info(f"[APPROACH] start approach to {object_name}")
-
-    result = node.navigate_to_object(
+    return direct_odom_approach_action(
+        node=node,
         object_name=object_name,
         timeout_sec=timeout_sec,
         goal_tolerance_m=goal_tolerance_m,
     )
-
-    if result.success:
-        node.get_logger().info(f"[APPROACH] {object_name} SUCCESS")
-        return ActionStatus.SUCCESS
-
-    node.get_logger().warn(
-        f"[APPROACH] {object_name} failed: {result.state.value}"
-    )
-
-    if result.state.value == "TIMEOUT":
-        return ActionStatus.TIMEOUT
-
-    if result.state.value == "REJECTED":
-        return ActionStatus.REJECTED
-
-    return ActionStatus.FAILED
-
-
 def wait_action(duration_sec: float = 3.0) -> ActionStatus:
     """
     지정된 시간 동안 대기하는 action
@@ -79,8 +61,34 @@ def observe_action(
     return ActionStatus.SUCCESS
 
 
+DETECTION_LABEL_ALIAS = {
+    "dog": "dog",
+    "puppy": "dog",
+    "cat": "cat",
+    "person": "person",
+    "sports_ball": "ball",
+    "sports ball": "ball",
+    "ball": "ball",
+    "apple": "apple",
+    "bowl": "apple",
+    "cup": "apple",
+    "dish": "apple",
+    "plate": "apple",
+    "bed": "bed",
+    "couch": "bed",
+    "sofa": "bed",
+    "chair": "chair",
+    "vase": "vase",
+    "plant": "vase",
+    "potted_plant": "vase",
+    "airplane": "vase",
+}
+
+
 def normalize_detection_label(label) -> str:
-    return str(label or "").strip().lower().replace("-", "_").replace(" ", "_")
+    normalized = str(label or "").strip().lower()
+    normalized = normalized.replace("-", "_").replace(" ", "_")
+    return DETECTION_LABEL_ALIAS.get(normalized, normalized)
 
 
 def detection_matches_target(detection: dict, object_name: str) -> bool:
@@ -88,8 +96,6 @@ def detection_matches_target(detection: dict, object_name: str) -> bool:
     target = normalize_detection_label(object_name)
 
     return bool(label) and label == target
-
-
 def extract_detection_list(data: str) -> list[dict]:
     try:
         payload = json.loads(data)
@@ -262,3 +268,166 @@ def report_action(message: str = "sequence completed") -> ActionStatus:
 
     print(f"[REPORT] {message}")
     return ActionStatus.SUCCESS
+
+def direct_odom_approach_action(
+    node,
+    object_name: str,
+    timeout_sec: float = 60.0,
+    goal_tolerance_m: float = 0.35,
+):
+    import math
+    import os
+    import time
+    import yaml
+
+    import rclpy
+    from geometry_msgs.msg import Twist
+    from nav_msgs.msg import Odometry
+
+    try:
+        from script.action_schema import ActionStatus
+    except ImportError:
+        from action_schema import ActionStatus
+
+    def normalize_angle(angle: float) -> float:
+        while angle > math.pi:
+            angle -= 2.0 * math.pi
+        while angle < -math.pi:
+            angle += 2.0 * math.pi
+        return angle
+
+    def yaw_from_quaternion(q) -> float:
+        siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
+        cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+        return math.atan2(siny_cosp, cosy_cosp)
+
+    def clamp(value: float, min_value: float, max_value: float) -> float:
+        return max(min_value, min(max_value, value))
+
+    def load_target_from_yaml(obj_name: str):
+        target_name = f"{obj_name}_zone"
+
+        candidate_paths = [
+            os.path.join(os.getcwd(), "config", "target.yaml"),
+            os.path.expanduser("~/ros2_clean_ws/config/target.yaml"),
+            os.path.expanduser("~/ros2_clean_ws/src/robotics-project/config/target.yaml"),
+            os.path.expanduser("~/ros2_clean_ws/install/pet_robot_pkg/share/pet_robot_pkg/config/target.yaml"),
+        ]
+
+        for path in candidate_paths:
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    data = yaml.safe_load(f)
+
+                target = data["targets"][target_name]
+                return (
+                    target_name,
+                    float(target["x"]),
+                    float(target["y"]),
+                    float(target.get("yaw", 0.0)),
+                    path,
+                )
+
+        raise FileNotFoundError(
+            "target.yaml not found. Checked: " + ", ".join(candidate_paths)
+        )
+
+    try:
+        target_name, target_x, target_y, _, target_path = load_target_from_yaml(object_name)
+    except Exception as e:
+        node.get_logger().error(f"[DIRECT_APPROACH] failed to load target: {e}")
+        return ActionStatus.FAILED
+
+    current = {
+        "ready": False,
+        "x": 0.0,
+        "y": 0.0,
+        "yaw": 0.0,
+    }
+
+    def odom_callback(msg: Odometry):
+        current["x"] = msg.pose.pose.position.x
+        current["y"] = msg.pose.pose.position.y
+        current["yaw"] = yaw_from_quaternion(msg.pose.pose.orientation)
+        current["ready"] = True
+
+    cmd_pub = node.create_publisher(Twist, "/cmd_vel", 10)
+    odom_sub = node.create_subscription(Odometry, "/odom", odom_callback, 10)
+
+    def publish_stop():
+        stop = Twist()
+        cmd_pub.publish(stop)
+
+    node.get_logger().info(
+        f"[DIRECT_APPROACH] {object_name} -> {target_name}, "
+        f"target=({target_x:.2f}, {target_y:.2f}), "
+        f"tolerance={goal_tolerance_m:.2f}, yaml={target_path}"
+    )
+
+    deadline = time.monotonic() + timeout_sec
+
+    try:
+        # publisher/subscriber 연결 대기
+        time.sleep(0.5)
+
+        # odom 첫 수신 대기
+        while rclpy.ok() and not current["ready"] and time.monotonic() < deadline:
+            rclpy.spin_once(node, timeout_sec=0.1)
+
+        if not current["ready"]:
+            node.get_logger().error("[DIRECT_APPROACH] /odom not received")
+            publish_stop()
+            return ActionStatus.TIMEOUT
+
+        last_log_time = 0.0
+
+        while rclpy.ok() and time.monotonic() < deadline:
+            dx = target_x - current["x"]
+            dy = target_y - current["y"]
+            distance = math.hypot(dx, dy)
+
+            target_heading = math.atan2(dy, dx)
+            yaw_error = normalize_angle(target_heading - current["yaw"])
+
+            if distance <= goal_tolerance_m:
+                publish_stop()
+                node.get_logger().info(
+                    f"[DIRECT_APPROACH] {object_name} SUCCESS "
+                    f"distance={distance:.2f} <= {goal_tolerance_m:.2f}"
+                )
+                return ActionStatus.SUCCESS
+
+            cmd = Twist()
+
+            if abs(yaw_error) > 0.30:
+                # 먼저 방향 맞추기
+                cmd.linear.x = 0.0
+                cmd.angular.z = clamp(1.2 * yaw_error, -0.45, 0.45)
+            else:
+                # 방향이 맞으면 전진
+                cmd.linear.x = clamp(0.35 * distance, 0.08, 0.18)
+                cmd.angular.z = clamp(0.8 * yaw_error, -0.25, 0.25)
+
+            cmd_pub.publish(cmd)
+
+            now = time.monotonic()
+            if now - last_log_time >= 0.5:
+                node.get_logger().info(
+                    f"[DIRECT_APPROACH] current=({current['x']:.2f}, {current['y']:.2f}, yaw={current['yaw']:.2f}) "
+                    f"target=({target_x:.2f}, {target_y:.2f}) "
+                    f"heading={target_heading:.2f} yaw_error={yaw_error:.2f} "
+                    f"dist={distance:.2f} cmd=({cmd.linear.x:.2f}, {cmd.angular.z:.2f})"
+                )
+                last_log_time = now
+
+            rclpy.spin_once(node, timeout_sec=0.1)
+            time.sleep(0.05)
+
+        publish_stop()
+        node.get_logger().warn(f"[DIRECT_APPROACH] {object_name} TIMEOUT")
+        return ActionStatus.TIMEOUT
+
+    finally:
+        publish_stop()
+        node.destroy_subscription(odom_sub)
+        node.destroy_publisher(cmd_pub)

@@ -178,11 +178,105 @@ APPROACH_OBJECTS = {
     "chair",
 }
 
+
+# target.yaml에 고정 좌표가 있어서
+# YOLO label 확인 후 해당 zone으로 이동 가능한 object
+STATIC_APPROACH_OBJECTS = {
+    "apple",
+    "ball",
+    "bed",
+    "chair",
+    "cat",
+}
+
 OBSERVE_OBJECTS = {
     "dog",
     "cat",
     "vase",
 }
+PLANNER_CONTRACT = """
+You are a ROS2 pet-care robot action planner.
+
+Your job:
+- Understand the user's natural-language request.
+- Infer the situation intent freely.
+- Choose suitable objects and actions.
+- Generate a multi-step action sequence that can be executed by the robot.
+
+You are NOT selecting from fixed scenario templates.
+You may create a new sequence for each user request.
+However, every step must obey the executable action schema below.
+
+Available objects:
+- dog: pet target. Can be observed or followed.
+- cat: pet target. Can be approached or observed.
+- apple: food target. Can be approached.
+- ball: toy target. Can be approached.
+- bed: static location. Can be approached or observed.
+- chair: static object. Can be approached or observed.
+- vase: fragile object. Must NOT be approached. Observe only.
+
+Available actions:
+1. approach
+   Purpose: move near the target object/location.
+   Allowed objects: apple, ball, bed, chair, cat.
+   Do NOT use approach for vase.
+   Params:
+   {
+     "timeout_sec": 60.0,
+     "goal_tolerance_m": 0.25,
+     "retry_count": 2
+   }
+
+2. observe
+   Purpose: look at or monitor the target.
+   Allowed objects: dog, cat, apple, ball, bed, chair, vase.
+   Params:
+   {
+     "duration_sec": 5.0
+   }
+
+3. wait
+   Purpose: pause before the next action.
+   Object must be null.
+   Params:
+   {
+     "duration_sec": 2.0
+   }
+
+4. report
+   Purpose: report the result to the user.
+   Object must be null.
+   Params:
+   {
+     "message": "<short English or Korean status message>"
+   }
+
+5. search
+   Purpose: search for an object if the user explicitly asks to find/search it or if the object is not currently detected.
+   Allowed objects: dog, cat, apple, ball, bed, chair, vase.
+   Params:
+   {
+     "timeout_sec": 45.0,
+     "duration_sec": 4.0,
+     "retry_count": 0
+   }
+
+Planning rules:
+- Generate 1 to 5 steps.
+- Always end with report.
+- Do not invent unsupported actions.
+- Do not invent unsupported objects.
+- Do not output comments outside JSON.
+- If the user asks for feeding, food, hunger, or meal care, include approach apple and observe dog.
+- If the user asks for play or entertainment, include approach ball and observe dog.
+- If the user asks to check or monitor a fragile object like vase, use observe vase and report. Never approach vase.
+- If the user asks to check a specific static object, approach it first, then optionally observe it, then report.
+- If the user explicitly asks to find/search something, use search before follow-up actions.
+- If the user mentions multiple objects, create a sequence that visits or observes them in the user's requested order.
+- Detected labels are auxiliary context only. If the user explicitly asks for an object, prioritize the user's request over detected labels.
+"""
+
 
 ACTION_SEQUENCE_SCHEMA = {
     "type": "object",
@@ -389,11 +483,7 @@ def vase_safety_sequence() -> list[dict[str, Any]]:
 
 
 def static_multi_target_sequence() -> list[dict[str, Any]]:
-    return [
-        approach_step(1, "apple"),
-        approach_step(2, "bed"),
-        approach_step(3, "chair"),
-    ]
+    return multi_object_check_sequence(["apple", "bed", "chair"])
 
 
 def pet_monitoring_sequence(object_name: str) -> list[dict[str, Any]]:
@@ -418,12 +508,34 @@ def multi_pet_monitoring_sequence(object_names: list[str]) -> list[dict[str, Any
 
 def object_check_sequence(object_name: str) -> list[dict[str, Any]]:
     message_key = f"{object_name}_check"
-    return [
-        approach_step(1, object_name),
-        search_step(2, object_name),
-        report_step(3, REPORT_MESSAGES.get(message_key, f"{object_name} check completed")),
-    ]
 
+    # YOLO로 먼저 object label을 확인한 뒤,
+    # target.yaml에 정의된 해당 object zone으로 이동
+    if object_name in STATIC_APPROACH_OBJECTS:
+        return [
+            search_step(1, object_name),
+            approach_step(2, object_name),
+            report_step(
+                3,
+                REPORT_MESSAGES.get(
+                    message_key,
+                    f"{object_name} check completed",
+                ),
+            ),
+        ]
+
+    # dog/person처럼 고정 좌표가 없는 객체는 이동하지 않고 관찰/보고만 수행
+    return [
+        search_step(1, object_name),
+        observe_step(2, object_name),
+        report_step(
+            3,
+            REPORT_MESSAGES.get(
+                message_key,
+                f"{object_name} check completed",
+            ),
+        ),
+    ]
 
 def no_valid_target_sequence() -> list[dict[str, Any]]:
     return [
@@ -502,10 +614,24 @@ def sequence_object_names(sequence: list[dict[str, Any]]) -> set[str]:
 
 
 def multi_object_check_sequence(object_names: list[str]) -> list[dict[str, Any]]:
-    return [
-        approach_step(index, object_name)
-        for index, object_name in enumerate(object_names, start=1)
-    ]
+    sequence = []
+
+    for object_name in object_names:
+        sequence.append(search_step(len(sequence) + 1, object_name))
+
+        if object_name in STATIC_APPROACH_OBJECTS:
+            sequence.append(approach_step(len(sequence) + 1, object_name))
+        else:
+            sequence.append(observe_step(len(sequence) + 1, object_name))
+
+    sequence.append(
+        report_step(
+            len(sequence) + 1,
+            "multi object check completed",
+        )
+    )
+
+    return sequence
 
 
 def smart_plan_sequence(
@@ -708,6 +834,48 @@ def is_valid_step(step: dict[str, Any]) -> bool:
 
     return validate_step(step) == ActionStatus.SUCCESS
 
+def ensure_search_before_static_approach(
+    sequence: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    expanded: list[dict[str, Any]] = []
+    searched_objects: set[str] = set()
+
+    for step in sequence:
+        action = step.get("action")
+        object_name = step.get("object")
+
+        if (
+            action == "approach"
+            and object_name in STATIC_APPROACH_OBJECTS
+            and object_name not in searched_objects
+        ):
+            expanded.append(
+                search_step(
+                    len(expanded) + 1,
+                    object_name,
+                )
+            )
+            searched_objects.add(object_name)
+
+        expanded.append(
+            {
+                **step,
+                "step_id": len(expanded) + 1,
+            }
+        )
+
+        if action == "search" and object_name:
+            searched_objects.add(object_name)
+
+        coerced = [
+        {
+            **step,
+            "step_id": index,
+        }
+        for index, step in enumerate(coerced, start=1)
+    ]
+
+    return ensure_search_before_static_approach(coerced)
 
 def coerce_action_sequence(
     llm_output: dict[str, Any] | list[dict[str, Any]] | None,
@@ -775,19 +943,21 @@ def coerce_action_sequence(
         for index, step in enumerate(coerced, start=1)
     ]
 
-
 def build_prompt(user_text: str, detected_labels: list[str]) -> str:
     normalized = normalize_labels(detected_labels)
+    vase_safety_message = REPORT_MESSAGES["vase_safety"]
 
     return f"""
-You are a robot action planner for a pet-care robot.
+You are a ROS2 robot action planner for a pet-care robot.
 
-Plan the full executable action sequence for the Korean user request.
+Your role is to understand the Korean user request, infer the situation intent,
+choose suitable objects and actions, and generate an executable action sequence.
 
-You must decide the intermediate steps yourself. Do not only classify the
-request into a fixed scenario. Choose the target objects, action order, waits,
-observations, and final report based on the user request, detected objects, and
-safety rules.
+Important:
+- Do NOT simply classify the request into a fixed scenario.
+- You may freely build a scenario based on the user's request.
+- However, every step must obey the executable action/object rules below.
+- The output will be executed directly by a ROS2 sequence executor.
 
 Known world objects:
 {KNOWN_WORLD_OBJECTS}
@@ -808,68 +978,256 @@ User request:
 {user_text}
 
 Planning policy:
-- Prefer the user's explicit request over automatic scenario assumptions.
-- Build the scenario from Known world objects and the user's explicit request.
-- Use detected objects only as visibility context. Do not choose a detected
-  object as the task target when the user explicitly requested another known
-  world object.
-- Keep the sequence as short as possible while still completing the request.
-- Add intermediate steps only when they are useful for the task.
-- Use approach for reachable navigation targets.
-- Use search before observe when the target may not already be visible, when
-  the user asks to find/locate an object, or when the task depends on locating
-  a pet or object in the world.
-- Use observe to inspect or confirm pet/object state.
-- Use feed after locating a food item and the pet when the task implies a pet
-  is hungry, needs a meal, or should be given food.
-- Use wait when the task implies a delay or a short pause.
-- Use report when the user asks to be told the result, or when reporting is the
-  natural final step of the task.
+- Prefer the user's explicit request over automatic assumptions.
+- Use detected objects only as visibility context.
+- Do not choose a detected object as the task target when the user explicitly requested another known world object.
+- Keep the sequence short, but include useful intermediate steps when needed.
+- Always end with report.
+- Use approach for reachable navigation targets when the robot should move near them.
+- Use observe when the robot should check, monitor, inspect, or confirm the state of an object or pet.
+- Use search only when the user explicitly asks to find/search/locate something, or when the task clearly depends on locating a pet first.
+- Use wait only when the user request implies a delay, pause, or waiting period.
+- Use feed only when the user explicitly asks to feed the pet or the request clearly implies meal/food care.
 - If the user requests multiple targets, preserve the requested order.
-- If the user asks for an unsafe or impossible action, produce the safest
-  executable alternative and report why.
+- If the user asks for an unsafe or impossible action, produce the safest executable alternative and explain it in report.
 
-Safety and object rules:
-- Never approach vase. It is observe-only.
-- If the user asks to approach vase, replace it with observe
-  vase and report "{REPORT_MESSAGES["vase_safety"]}".
+Object-specific rules:
+- apple is treated as food.
+- ball is treated as a toy.
+- dog is the pet target. It can be searched, observed, fed, or followed.
+- chair, bed, apple, ball, and cat are reachable targets.
+- vase is fragile and observe-only.
+- Never approach vase.
+- If the user asks to approach vase, replace it with observe vase and report "{vase_safety_message}".
 - object may be null only for wait and report.
 - Do not invent objects outside the allowed object list.
+- Do not invent actions outside the allowed action list.
+
+Useful planning patterns:
+- Feeding-like request:
+  approach apple -> observe dog -> report
+  If the request explicitly says to feed the dog, use feed dog after approaching apple.
+- Play-like request:
+  approach ball -> observe dog -> report
+- Static object check:
+  approach object -> observe object -> report
+- Pet state check:
+  search dog -> observe dog -> report
+- Vase safety check:
+  observe vase -> report
+- Multi-target request:
+  follow the user's object order and use approach/observe as appropriate.
 
 Examples of valid plans:
-- "강아지 밥 챙겨줘" with dog visible:
-  search apple -> approach apple -> search dog -> feed dog(item=apple) -> report
-- "침대 보고 의자도 확인해줘":
-  approach bed -> search bed -> approach chair -> search chair -> report
-- "화분으로 가까이 가줘":
-  search vase -> observe vase -> report
-- "강아지 상태 알려줘":
-  search dog -> observe dog -> report
+1. "강아지 밥 챙겨줘"
+   approach apple -> observe dog -> report
+
+2. "강아지한테 먹이 줘"
+   approach apple -> feed dog -> observe dog -> report
+
+3. "강아지가 심심해 보여. 공으로 놀아줘"
+   approach ball -> observe dog -> report
+
+4. "의자 확인해줘"
+   approach chair -> observe chair -> report
+
+5. "침대 보고 의자도 확인해줘"
+   approach bed -> observe bed -> approach chair -> observe chair -> report
+
+6. "강아지 어디 있는지 찾아서 상태 알려줘"
+   search dog -> observe dog -> report
+
+7. "꽃병으로 가까이 가줘"
+   observe vase -> report
 
 Output rules:
 1. Return JSON only.
-2. comment must be a short, natural Korean response to the user. Do not copy the
-   user's request into a fixed "네, {{request}} 하겠습니다" template.
-3. Use only allowed objects and actions.
-4. object may be null only for wait and report.
-5. step_id must start from 1 and increase by 1.
-6. approach params: timeout_sec=60.0, goal_tolerance_m=0.25, retry_count=2.
-7. observe params: duration_sec=5.0.
-8. search params: timeout_sec=45.0, duration_sec=4.0, retry_count=0.
-9. wait params: duration_sec=2.0 unless requested otherwise.
-10. feed params: item=apple unless requested otherwise.
-11. report params: message.
-12. If no executable plan can be made, return wait 2 seconds and report
-   "no valid target detected".
-13. For params, include all six schema keys. Use null for unused params.
+2. Do not wrap the JSON in markdown.
+3. comment must be a short, natural Korean response.
+4. Use only allowed objects and actions.
+5. object may be null only for wait and report.
+6. step_id must start from 1 and increase by 1.
+7. approach params must include:
+   timeout_sec=60.0, goal_tolerance_m=0.25, retry_count=2.
+8. observe params must include:
+   duration_sec=5.0.
+9. search params must include:
+   timeout_sec=45.0, duration_sec=4.0, retry_count=0.
+10. wait params must include:
+   duration_sec=2.0 unless the user requested a different duration.
+11. feed params must include:
+   item=apple unless requested otherwise.
+12. report params must include:
+   message.
+13. Include only params needed for that action. Do not add unused params with null.
+14. If no executable plan can be made, return wait 2 seconds and report "no valid target detected".
+
+Required JSON shape:
+{{
+  "comment": "short Korean comment",
+  "sequence": [
+    {{
+      "step_id": 1,
+      "action": "approach",
+      "object": "apple",
+      "params": {{
+        "timeout_sec": 60.0,
+        "goal_tolerance_m": 0.25,
+        "retry_count": 2
+      }}
+    }},
+    {{
+      "step_id": 2,
+      "action": "report",
+      "object": null,
+      "params": {{
+        "message": "sequence completed"
+      }}
+    }}
+  ]
+}}
 """
 
+ALLOWED_EXEC_OBJECTS = {"dog", "cat", "apple", "ball", "bed", "chair", "vase"}
+ALLOWED_EXEC_ACTIONS = {"approach", "observe", "wait", "report", "search", "feed", "follow"}
+
+APPROACH_OBJECTS = {"apple", "ball", "bed", "chair", "cat"}
+OBSERVE_OBJECTS = {"dog", "cat", "apple", "ball", "bed", "chair", "vase"}
+SEARCH_OBJECTS = {"dog", "cat", "apple", "ball", "bed", "chair", "vase"}
+FEED_OBJECTS = {"dog"}
+FOLLOW_OBJECTS = {"dog", "cat"}
+
+
+def default_params_for_action(action: str) -> dict:
+    if action == "approach":
+        return {"timeout_sec": 60.0, "goal_tolerance_m": 0.25, "retry_count": 2}
+    if action == "observe":
+        return {"duration_sec": 5.0}
+    if action == "search":
+        return {"timeout_sec": 45.0, "duration_sec": 4.0, "retry_count": 0}
+    if action == "wait":
+        return {"duration_sec": 2.0}
+    if action == "feed":
+        return {"item": "apple"}
+    if action == "follow":
+        return {"duration_sec": 10.0, "safe_distance_m": 1.0}
+    if action == "report":
+        return {"message": "sequence completed"}
+    return {}
+
+
+def normalize_sequence_result(result: dict) -> dict:
+    raw_sequence = result.get("sequence", [])
+    normalized = []
+
+    if not isinstance(raw_sequence, list):
+        raw_sequence = []
+
+    for step in raw_sequence:
+        if not isinstance(step, dict):
+            continue
+
+        action = step.get("action")
+        obj = step.get("object")
+
+        if action not in ALLOWED_EXEC_ACTIONS:
+            continue
+
+        if obj is not None and obj not in ALLOWED_EXEC_OBJECTS:
+            continue
+
+        # Safety: vase must never be approached.
+        if action == "approach" and obj == "vase":
+            normalized.append({
+                "step_id": len(normalized) + 1,
+                "action": "observe",
+                "object": "vase",
+                "params": {"duration_sec": 5.0},
+            })
+            continue
+
+        # Action-object validation.
+        if action == "approach" and obj not in APPROACH_OBJECTS:
+            continue
+
+        if action == "observe" and obj not in OBSERVE_OBJECTS:
+            continue
+
+        if action == "search" and obj not in SEARCH_OBJECTS:
+            continue
+
+        if action == "feed" and obj not in FEED_OBJECTS:
+            continue
+
+        if action == "follow" and obj not in FOLLOW_OBJECTS:
+            continue
+
+        if action in {"wait", "report"}:
+            obj = None
+
+        params = default_params_for_action(action)
+        raw_params = step.get("params", {})
+
+        if isinstance(raw_params, dict):
+            # Remove null values from LLM output.
+            cleaned_params = {
+                k: v for k, v in raw_params.items()
+                if v is not None
+            }
+            params.update(cleaned_params)
+
+        normalized.append({
+            "step_id": len(normalized) + 1,
+            "action": action,
+            "object": obj,
+            "params": params,
+        })
+
+    if not normalized:
+        normalized.append({
+            "step_id": 1,
+            "action": "wait",
+            "object": None,
+            "params": {"duration_sec": 2.0},
+        })
+        normalized.append({
+            "step_id": 2,
+            "action": "report",
+            "object": None,
+            "params": {"message": "no valid target detected"},
+        })
+
+    if normalized[-1]["action"] != "report":
+        normalized.append({
+            "step_id": len(normalized) + 1,
+            "action": "report",
+            "object": None,
+            "params": {"message": "sequence completed"},
+        })
+
+    return {
+        "comment": result.get(
+            "comment",
+            "요청에 맞는 행동 시퀀스를 생성했습니다."
+        ),
+        "sequence": normalized,
+    }
 
 def parse_response_json(output_text: str) -> dict[str, Any]:
+    output_text = output_text.strip()
+
+    # 혹시 LLM이 ```json ... ``` 형태로 감싸서 주는 경우 제거
+    if output_text.startswith("```"):
+        output_text = output_text.strip("`")
+        if output_text.startswith("json"):
+            output_text = output_text[4:].strip()
+
     parsed = json.loads(output_text)
+
     if not isinstance(parsed, dict):
         raise ValueError("LLM output must be a JSON object")
-    return parsed
+
+    return normalize_sequence_result(parsed)
 
 
 def call_llm_api(
@@ -923,7 +1281,7 @@ def call_llm_api(
 
 
 if __name__ == "__main__":
-    result = call_llm_api("강아지 밥 챙겨줘", ["dog"])
+    result = call_llm_api("침대 확인해줘", ["bed"])
 
     print("===== ACTION SEQUENCE =====")
     print(json.dumps(result, indent=2, ensure_ascii=False))

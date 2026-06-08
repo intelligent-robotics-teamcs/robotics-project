@@ -1,58 +1,62 @@
-# Static objects: ball, bed, apple, vase, chair, cat
+# Static objects: bed, apple, vase, chair, cat
 # Dynamic objects: person, dog
-
-# Static object positions should match the world model poses.
-
+# Note:
+# Each *_zone is an approach point near the object,
+# not the exact object center pose.
+# The robot starts near (0, 0), so each target is slightly pulled
+# toward the center to avoid collision with the object.
 
 targets:
+  # 현재 world_yolo_sanity_check에는 ball include가 없음.
+  # ball을 테스트하려면 world 파일에 model://ball include를 추가해야 함.
   ball_zone:
     frame_id: "map"
     x: 0.47
     y: -0.60
     yaw: 0.0
-    description: "Ball location for play"
-    
+    description: "Ball approach point - inactive unless ball model is included in world"
+
   apple_zone:
     frame_id: "map"
     x: 0.0
-    y: -2.20
-    yaw: 0.0
-    description: "Food position"
+    y: -1.65
+    yaw: -1.5708
+    description: "Apple approach point"
 
   bed_zone:
     frame_id: "map"
-    x: -2.40
-    y: 1.70
-    yaw: 3.1416
-    description: "Bed location"
+    x: -1.35
+    y: 0.95
+    yaw: 2.5269
+    description: "Bed approach point"
 
   chair_zone:
     frame_id: "map"
-    x: -1.80
-    y: -1.50
-    yaw: 2.3562
-    description: "Chair area"
+    x: -1.45
+    y: -1.21
+    yaw: -2.4469
+    description: "Chair approach point"
 
   cat_zone:
     frame_id: "map"
-    x: 1.80
-    y: -1.35
-    yaw: -1.5708
-    description: "Cat location for sanity check"
-
-  safe_observe_zone:
-    frame_id: "map"
-    x: 2.0
-    y: 1.0
-    yaw: 0.0
-    description: "Safe observation point for dangerous object"
+    x: 1.44
+    y: -1.08
+    yaw: -0.6435
+    description: "Cat approach point"
 
   vase_zone:
     frame_id: "map"
-    x: 0.10
-    y: 2.30
-    yaw: 0.0
-    description: "Vase rvation-only zone"
+    x: 0.08
+    y: 1.85
+    yaw: 1.5273
+    description: "Vase approach point"
 
-# Dynamic targets (people, dogs) will be detected and tracked in real-time,
-# so their positions are not predefined in this configuration.
+  safe_observe_zone:
+    frame_id: "map"
+    x: 1.55
+    y: 0.70
+    yaw: 0.4229
+    description: "Safe observation point near dog/person area"
+
+# Dynamic targets such as dog/person are detected by vision.
+# They should not be approached through target.yaml unless fixed demo zones are intentionally added.
