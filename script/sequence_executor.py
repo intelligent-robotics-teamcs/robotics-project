@@ -187,8 +187,23 @@ class SequenceExecutor:
         return actions.wait_action(duration_sec=max(duration_sec, 0.0))
 
     def execute_observe(self, step: dict) -> ActionStatus:
-        duration_sec = float(step.get("params", {}).get("duration_sec", 0.0))
+        params = step.get("params", {})
+        duration_sec = float(params.get("duration_sec", 0.0))
         object_name = step.get("object")
+
+        if object_name == "chair" and bool(params.get("face_target", True)):
+            face_status = actions.face_target_action(
+                node=self._get_nav_node(),
+                object_name=object_name,
+                timeout_sec=float(params.get("face_timeout_sec", 8.0)),
+                yaw_tolerance_rad=float(
+                    params.get("yaw_tolerance_rad", 0.12)
+                ),
+            )
+
+            if face_status not in {ActionStatus.SUCCESS, ActionStatus.SKIPPED}:
+                return face_status
+
         return actions.observe_action(
             object_name=object_name,
             duration_sec=max(duration_sec, 0.0),

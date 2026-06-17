@@ -515,8 +515,9 @@ def object_check_sequence(object_name: str) -> list[dict[str, Any]]:
         return [
             search_step(1, object_name),
             approach_step(2, object_name),
+            observe_step(3, object_name),
             report_step(
-                3,
+                4,
                 REPORT_MESSAGES.get(
                     message_key,
                     f"{object_name} check completed",
@@ -621,6 +622,7 @@ def multi_object_check_sequence(object_names: list[str]) -> list[dict[str, Any]]
 
         if object_name in STATIC_APPROACH_OBJECTS:
             sequence.append(approach_step(len(sequence) + 1, object_name))
+            sequence.append(observe_step(len(sequence) + 1, object_name))
         else:
             sequence.append(observe_step(len(sequence) + 1, object_name))
 
@@ -867,15 +869,41 @@ def ensure_search_before_static_approach(
         if action == "search" and object_name:
             searched_objects.add(object_name)
 
-        coerced = [
+    return renumber_steps(expanded)
+
+
+def ensure_chair_observe_after_approach(
+    sequence: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    expanded: list[dict[str, Any]] = []
+
+    for index, step in enumerate(sequence):
+        expanded.append(step)
+
+        if step.get("action") != "approach" or step.get("object") != "chair":
+            continue
+
+        next_step = sequence[index + 1] if index + 1 < len(sequence) else None
+        if (
+            isinstance(next_step, dict)
+            and next_step.get("action") == "observe"
+            and next_step.get("object") == "chair"
+        ):
+            continue
+
+        expanded.append(observe_step(len(expanded) + 1, "chair"))
+
+    return renumber_steps(expanded)
+
+
+def renumber_steps(sequence: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
         {
             **step,
             "step_id": index,
         }
-        for index, step in enumerate(coerced, start=1)
+        for index, step in enumerate(sequence, start=1)
     ]
-
-    return ensure_search_before_static_approach(coerced)
 
 def coerce_action_sequence(
     llm_output: dict[str, Any] | list[dict[str, Any]] | None,
@@ -935,13 +963,10 @@ def coerce_action_sequence(
     if requested_objects and not requested_objects.issubset(planned_objects):
         return smart_plan_sequence(user_text, detected_labels)
 
-    return [
-        {
-            **step,
-            "step_id": index,
-        }
-        for index, step in enumerate(coerced, start=1)
-    ]
+    coerced = renumber_steps(coerced)
+    coerced = ensure_chair_observe_after_approach(coerced)
+
+    return renumber_steps(coerced)
 
 def build_prompt(user_text: str, detected_labels: list[str]) -> str:
     normalized = normalize_labels(detected_labels)
@@ -955,7 +980,9 @@ choose suitable objects and actions, and generate an executable action sequence.
 
 Important:
 - Do NOT simply classify the request into a fixed scenario.
+- Do not only classify the request into a fixed scenario.
 - You may freely build a scenario based on the user's request.
+- You must decide the intermediate steps yourself.
 - However, every step must obey the executable action/object rules below.
 - The output will be executed directly by a ROS2 sequence executor.
 

@@ -108,6 +108,14 @@ def test_coerce_fills_executor_params_and_step_ids():
         },
         {
             "step_id": 2,
+            "action": "observe",
+            "object": "chair",
+            "params": {
+                "duration_sec": 5.0,
+            },
+        },
+        {
+            "step_id": 3,
             "action": "report",
             "object": None,
             "params": {

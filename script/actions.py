@@ -18,6 +18,19 @@ if TYPE_CHECKING:
         from nav2_goal_sender import Nav2GoalSender
 
 
+def navigation_result_to_action_status(result) -> ActionStatus:
+    if getattr(result, "success", False):
+        return ActionStatus.SUCCESS
+
+    state = getattr(getattr(result, "state", None), "value", "")
+
+    if state == "TIMEOUT":
+        return ActionStatus.TIMEOUT
+    if state == "REJECTED":
+        return ActionStatus.REJECTED
+
+    return ActionStatus.FAILED
+
 
 def approach_action(
     node,
@@ -26,8 +39,21 @@ def approach_action(
     goal_tolerance_m: float = 0.35,
     retry_count: int = 0,
 ):
-    node.get_logger().info(
-        f"[APPROACH] using direct odom approach for {object_name}"
+    if hasattr(node, "navigate_to_object"):
+        node.get_logger().info(
+            f"[APPROACH] using Nav2 approach for {object_name}"
+        )
+
+        result = node.navigate_to_object(
+            object_name=object_name,
+            timeout_sec=timeout_sec,
+            goal_tolerance_m=goal_tolerance_m,
+        )
+
+        return navigation_result_to_action_status(result)
+
+    node.get_logger().warn(
+        f"[APPROACH] Nav2 node unavailable; using direct odom fallback for {object_name}"
     )
 
     return direct_odom_approach_action(
@@ -59,6 +85,161 @@ def observe_action(
     time.sleep(duration_sec)
     print(f"[OBSERVE] {object_name} observation finished")
     return ActionStatus.SUCCESS
+
+
+def face_target_action(
+    node,
+    object_name: str,
+    timeout_sec: float = 8.0,
+    yaw_tolerance_rad: float = 0.12,
+    max_angular_speed: float = 0.45,
+    cmd_vel_topic: str = "/cmd_vel",
+    base_frame: str = "base_footprint",
+) -> ActionStatus:
+    import math
+
+    import rclpy
+    from geometry_msgs.msg import Twist
+    from nav_msgs.msg import Odometry
+
+    def normalize_angle(angle: float) -> float:
+        while angle > math.pi:
+            angle -= 2.0 * math.pi
+        while angle < -math.pi:
+            angle += 2.0 * math.pi
+        return angle
+
+    def yaw_from_quaternion(q) -> float:
+        siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
+        cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+        return math.atan2(siny_cosp, cosy_cosp)
+
+    def clamp(value: float, min_value: float, max_value: float) -> float:
+        return max(min_value, min(max_value, value))
+
+    try:
+        center = node.resolver.get_object_center(object_name)
+    except Exception as e:
+        node.get_logger().info(
+            f"[FACE_TARGET] no object center for {object_name}: {e}"
+        )
+        return ActionStatus.SKIPPED
+
+    frame_id = str(center.get("frame_id", "map"))
+    target_x = float(center["x"])
+    target_y = float(center["y"])
+
+    current = {
+        "ready": False,
+        "x": 0.0,
+        "y": 0.0,
+        "yaw": 0.0,
+    }
+
+    def odom_callback(msg: Odometry):
+        current["x"] = msg.pose.pose.position.x
+        current["y"] = msg.pose.pose.position.y
+        current["yaw"] = yaw_from_quaternion(msg.pose.pose.orientation)
+        current["ready"] = True
+
+    cmd_pub = node.create_publisher(Twist, cmd_vel_topic, 10)
+    odom_sub = node.create_subscription(Odometry, "/odom", odom_callback, 10)
+
+    tf_buffer = None
+    tf_listener = None
+    try:
+        from rclpy.time import Time
+        from tf2_ros import Buffer, TransformListener
+
+        tf_buffer = Buffer()
+        tf_listener = TransformListener(tf_buffer, node)
+        tf_time = Time()
+    except Exception as e:
+        node.get_logger().warn(
+            f"[FACE_TARGET] TF unavailable, falling back to /odom: {e}"
+        )
+        tf_time = None
+
+    def read_pose():
+        if tf_buffer is not None:
+            try:
+                transform = tf_buffer.lookup_transform(
+                    frame_id,
+                    base_frame,
+                    tf_time,
+                )
+                translation = transform.transform.translation
+                rotation = transform.transform.rotation
+                return (
+                    float(translation.x),
+                    float(translation.y),
+                    yaw_from_quaternion(rotation),
+                )
+            except Exception:
+                pass
+
+        if current["ready"]:
+            return current["x"], current["y"], current["yaw"]
+
+        return None
+
+    def publish_stop():
+        cmd_pub.publish(Twist())
+
+    node.get_logger().info(
+        f"[FACE_TARGET] rotating to face {object_name} center "
+        f"at ({target_x:.2f}, {target_y:.2f}) in {frame_id}"
+    )
+
+    deadline = time.monotonic() + max(timeout_sec, 0.1)
+    last_log_time = 0.0
+
+    try:
+        while rclpy.ok() and time.monotonic() < deadline:
+            rclpy.spin_once(node, timeout_sec=0.05)
+
+            pose = read_pose()
+            if pose is None:
+                continue
+
+            current_x, current_y, current_yaw = pose
+            target_yaw = math.atan2(target_y - current_y, target_x - current_x)
+            yaw_error = normalize_angle(target_yaw - current_yaw)
+
+            if abs(yaw_error) <= yaw_tolerance_rad:
+                publish_stop()
+                node.get_logger().info(
+                    f"[FACE_TARGET] {object_name} aligned "
+                    f"yaw_error={yaw_error:.2f}"
+                )
+                return ActionStatus.SUCCESS
+
+            cmd = Twist()
+            cmd.angular.z = clamp(
+                1.2 * yaw_error,
+                -abs(max_angular_speed),
+                abs(max_angular_speed),
+            )
+            cmd_pub.publish(cmd)
+
+            now = time.monotonic()
+            if now - last_log_time >= 0.5:
+                node.get_logger().info(
+                    f"[FACE_TARGET] current=({current_x:.2f}, {current_y:.2f}, yaw={current_yaw:.2f}) "
+                    f"target_yaw={target_yaw:.2f} yaw_error={yaw_error:.2f}"
+                )
+                last_log_time = now
+
+            time.sleep(0.05)
+
+        publish_stop()
+        node.get_logger().warn(f"[FACE_TARGET] {object_name} alignment timed out")
+        return ActionStatus.TIMEOUT
+
+    finally:
+        publish_stop()
+        node.destroy_subscription(odom_sub)
+        node.destroy_publisher(cmd_pub)
 
 
 DETECTION_LABEL_ALIAS = {

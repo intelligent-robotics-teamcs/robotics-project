@@ -764,12 +764,12 @@
     <include>
       <uri>model://chair</uri>
       <name>sanity_chair</name>
-      <pose>-1.80 -1.50 0 0 0 2.3562</pose>
+      <pose>-1.55 -1.35 0 0 0 2.3562</pose>
     </include>
     <include>
       <uri>model://vase</uri>
       <name>sanity_vase</name>
-      <pose>0.10 2.30 0 0 0 0</pose>
+      <pose>1.75 1.35 0 0 0 2.3562</pose>
     </include>
     <include>
       <uri>model://apple</uri>

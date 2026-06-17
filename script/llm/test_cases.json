@@ -105,6 +105,14 @@
       },
       {
         "step_id": 2,
+        "action": "observe",
+        "object": "apple",
+        "params": {
+          "duration_sec": 5.0
+        }
+      },
+      {
+        "step_id": 3,
         "action": "approach",
         "object": "bed",
         "params": {
@@ -114,13 +122,37 @@
         }
       },
       {
-        "step_id": 3,
+        "step_id": 4,
+        "action": "observe",
+        "object": "bed",
+        "params": {
+          "duration_sec": 5.0
+        }
+      },
+      {
+        "step_id": 5,
         "action": "approach",
         "object": "chair",
         "params": {
           "timeout_sec": 60.0,
           "goal_tolerance_m": 0.25,
           "retry_count": 2
+        }
+      },
+      {
+        "step_id": 6,
+        "action": "observe",
+        "object": "chair",
+        "params": {
+          "duration_sec": 5.0
+        }
+      },
+      {
+        "step_id": 7,
+        "action": "report",
+        "object": null,
+        "params": {
+          "message": "multi object check completed"
         }
       }
     ]
@@ -221,6 +253,14 @@
       },
       {
         "step_id": 2,
+        "action": "observe",
+        "object": "bed",
+        "params": {
+          "duration_sec": 5.0
+        }
+      },
+      {
+        "step_id": 3,
         "action": "report",
         "object": null,
         "params": {
@@ -246,6 +286,14 @@
       },
       {
         "step_id": 2,
+        "action": "observe",
+        "object": "chair",
+        "params": {
+          "duration_sec": 5.0
+        }
+      },
+      {
+        "step_id": 3,
         "action": "report",
         "object": null,
         "params": {
