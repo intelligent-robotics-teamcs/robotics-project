@@ -161,6 +161,76 @@ CHAIR_CHECK_SCENARIO = [
 ]
 
 
+FOLLOW_DOG_SCENARIO = [
+    {
+        "step_id": 1,
+        "action": "search",
+        "object": "dog",
+        "params": {
+            "timeout_sec": 20.0,
+            "duration_sec": 4.0,
+            "retry_count": 0,
+        },
+    },
+    {
+        "step_id": 2,
+        "action": "follow",
+        "object": "dog",
+        "params": {
+            "duration_sec": 15.0,
+            "safe_distance_m": 1.0,
+            "desired_bbox_height_px": 190.0,
+            "max_linear_speed": 0.25,
+            "max_angular_speed": 0.45,
+            "target_lost_timeout_sec": 3.0,
+        },
+    },
+    {
+        "step_id": 3,
+        "action": "report",
+        "object": None,
+        "params": {
+            "message": "dog follow completed",
+        },
+    },
+]
+
+
+FOLLOW_CAT_SCENARIO = [
+    {
+        "step_id": 1,
+        "action": "search",
+        "object": "cat",
+        "params": {
+            "timeout_sec": 20.0,
+            "duration_sec": 4.0,
+            "retry_count": 0,
+        },
+    },
+    {
+        "step_id": 2,
+        "action": "follow",
+        "object": "cat",
+        "params": {
+            "duration_sec": 15.0,
+            "safe_distance_m": 1.0,
+            "desired_bbox_height_px": 190.0,
+            "max_linear_speed": 0.25,
+            "max_angular_speed": 0.45,
+            "target_lost_timeout_sec": 3.0,
+        },
+    },
+    {
+        "step_id": 3,
+        "action": "report",
+        "object": None,
+        "params": {
+            "message": "cat follow completed",
+        },
+    },
+]
+
+
 INVALID_VASE_APPROACH_SCENARIO = [
     {
         "step_id": 1,
@@ -181,5 +251,7 @@ SCENARIOS = {
     "vase_safety": VASE_SAFETY_SCENARIO,
     "static_multi_target": STATIC_MULTI_TARGET_SCENARIO,
     "chair_check": CHAIR_CHECK_SCENARIO,
+    "follow_dog": FOLLOW_DOG_SCENARIO,
+    "follow_cat": FOLLOW_CAT_SCENARIO,
     "invalid_vase_approach": INVALID_VASE_APPROACH_SCENARIO,
 }

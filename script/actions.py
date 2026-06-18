@@ -413,21 +413,195 @@ def search_action(
 
 
 def follow_action(
+    node,
     object_name: str,
     duration_sec: float = 10.0,
     safe_distance_m: float = 1.0,
+    detection_topic: str = "/vision/detections",
+    cmd_vel_topic: str = "/cmd_vel",
+    image_width_px: float = 640.0,
+    desired_bbox_height_px: float = 190.0,
+    max_linear_speed: float = 0.25,
+    max_angular_speed: float = 0.45,
+    target_lost_timeout_sec: float = 3.0,
 ) -> ActionStatus:
     """
     object를 따라가는 action
     Vision 연동 전까지는 실제 구현하지 않고 SKIPPED 반환
     """
 
-    print(
-        f"[FOLLOW] follow {object_name} for {duration_sec} sec "
-        f"with safe distance {safe_distance_m} m"
+    import rclpy
+    from geometry_msgs.msg import Twist
+    from std_msgs.msg import String
+
+    latest = {
+        "detection": None,
+        "time": None,
+        "last_error": 0.0,
+        "seen": False,
+    }
+
+    def clamp(value: float, min_value: float, max_value: float) -> float:
+        return max(min_value, min(max_value, value))
+
+    def select_detection(detections: list[dict]) -> dict | None:
+        matches = [
+            detection
+            for detection in detections
+            if detection_matches_target(detection, object_name)
+        ]
+
+        if not matches:
+            return None
+
+        return max(
+            matches,
+            key=lambda detection: float(detection.get("confidence", 0.0)),
+        )
+
+    def bbox_height(detection: dict) -> float:
+        bbox = detection.get("bbox") or {}
+
+        try:
+            return max(1.0, float(bbox["y2"]) - float(bbox["y1"]))
+        except (KeyError, TypeError, ValueError):
+            return 0.0
+
+    def center_x(detection: dict) -> float | None:
+        center = detection.get("center") or {}
+        if "x" in center:
+            try:
+                return float(center["x"])
+            except (TypeError, ValueError):
+                pass
+
+        bbox = detection.get("bbox") or {}
+        try:
+            return (float(bbox["x1"]) + float(bbox["x2"])) / 2.0
+        except (KeyError, TypeError, ValueError):
+            return None
+
+    def detection_callback(msg):
+        detection = select_detection(extract_detection_list(msg.data))
+        if detection is None:
+            return
+
+        x = center_x(detection)
+        if x is None:
+            return
+
+        latest["detection"] = detection
+        latest["time"] = time.monotonic()
+        latest["last_error"] = (
+            (image_width_px / 2.0) - x
+        ) / max(image_width_px / 2.0, 1.0)
+        latest["seen"] = True
+
+    publisher = node.create_publisher(Twist, cmd_vel_topic, 10)
+    subscription = node.create_subscription(
+        String,
+        detection_topic,
+        detection_callback,
+        10,
     )
-    print("[FOLLOW] not implemented yet. skipped.")
-    return ActionStatus.SKIPPED
+
+    duration_sec = max(duration_sec, 0.0)
+    target_lost_timeout_sec = max(target_lost_timeout_sec, 0.1)
+    desired_bbox_height_px = max(desired_bbox_height_px, 20.0)
+    max_linear_speed = abs(max_linear_speed)
+    max_angular_speed = abs(max_angular_speed)
+    center_deadband = 0.08
+    distance_deadband = 0.18
+    deadline = time.monotonic() + duration_sec
+
+    def publish_stop():
+        publisher.publish(Twist())
+
+    node.get_logger().info(
+        f"[FOLLOW] tracking {object_name} for {duration_sec:.1f}s "
+        f"using {detection_topic}; safe_distance={safe_distance_m:.2f}m"
+    )
+
+    try:
+        last_log_time = 0.0
+
+        while rclpy.ok() and time.monotonic() < deadline:
+            rclpy.spin_once(node, timeout_sec=0.05)
+            now = time.monotonic()
+            command = Twist()
+
+            detection = latest["detection"]
+            last_seen_time = latest["time"]
+
+            if detection is None or last_seen_time is None:
+                command.angular.z = 0.18
+                publisher.publish(command)
+                time.sleep(0.05)
+                continue
+
+            lost_for = now - last_seen_time
+            if lost_for > target_lost_timeout_sec:
+                publish_stop()
+                node.get_logger().warn(
+                    f"[FOLLOW] lost {object_name} for {lost_for:.1f}s"
+                )
+                return ActionStatus.TIMEOUT
+
+            if lost_for > 0.5:
+                command.angular.z = clamp(
+                    0.25 * latest["last_error"],
+                    -0.25,
+                    0.25,
+                )
+                publisher.publish(command)
+                time.sleep(0.05)
+                continue
+
+            x_error = float(latest["last_error"])
+            height = bbox_height(detection)
+            height_error = (
+                desired_bbox_height_px - height
+            ) / desired_bbox_height_px
+
+            if abs(x_error) > center_deadband:
+                command.angular.z = clamp(
+                    0.9 * x_error,
+                    -max_angular_speed,
+                    max_angular_speed,
+                )
+
+            if abs(x_error) < 0.35 and abs(height_error) > distance_deadband:
+                command.linear.x = clamp(
+                    0.20 * height_error,
+                    -0.08,
+                    max_linear_speed,
+                )
+
+            publisher.publish(command)
+
+            if now - last_log_time >= 0.5:
+                node.get_logger().info(
+                    f"[FOLLOW] {object_name} x_error={x_error:.2f} "
+                    f"bbox_h={height:.1f} cmd=({command.linear.x:.2f}, "
+                    f"{command.angular.z:.2f})"
+                )
+                last_log_time = now
+
+            time.sleep(0.05)
+
+        publish_stop()
+
+        if latest["seen"]:
+            node.get_logger().info(f"[FOLLOW] {object_name} follow complete")
+            return ActionStatus.SUCCESS
+
+        node.get_logger().warn(f"[FOLLOW] {object_name} was not detected")
+        return ActionStatus.TIMEOUT
+
+    finally:
+        publish_stop()
+        node.destroy_subscription(subscription)
+        node.destroy_publisher(publisher)
 
 
 def feed_action(

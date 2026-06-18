@@ -260,9 +260,21 @@ class SequenceExecutor:
         params = step.get("params", {})
         object_name = step.get("object")
         return actions.follow_action(
+            node=self._get_nav_node(),
             object_name=object_name,
             duration_sec=max(float(params.get("duration_sec", 10.0)), 0.0),
             safe_distance_m=float(params.get("safe_distance_m", 1.0)),
+            detection_topic=str(params.get("detection_topic", "/vision/detections")),
+            cmd_vel_topic=str(params.get("cmd_vel_topic", "/cmd_vel")),
+            image_width_px=float(params.get("image_width_px", 640.0)),
+            desired_bbox_height_px=float(
+                params.get("desired_bbox_height_px", 190.0)
+            ),
+            max_linear_speed=float(params.get("max_linear_speed", 0.25)),
+            max_angular_speed=float(params.get("max_angular_speed", 0.45)),
+            target_lost_timeout_sec=float(
+                params.get("target_lost_timeout_sec", 3.0)
+            ),
         )
 
     def default_search_patrol(self, object_name: str | None) -> list[str]:

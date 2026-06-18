@@ -304,6 +304,26 @@ def test_where_is_vase_searches_before_observe():
     ]
 
 
+def test_follow_request_uses_follow_action():
+    actual = smart_plan_sequence(
+        "강아지를 천천히 따라가",
+        ["dog"],
+    )
+
+    assert [
+        (step["action"], step["object"])
+        for step in actual
+    ] == [
+        ("search", "dog"),
+        ("follow", "dog"),
+        ("report", None),
+    ]
+    assert actual[1]["params"] == {
+        "duration_sec": 10.0,
+        "safe_distance_m": 1.0,
+    }
+
+
 def test_coerce_rejects_detected_object_plan_when_user_requested_other_targets():
     actual = coerce_action_sequence(
         {
@@ -358,6 +378,7 @@ def main():
     test_feeding_cat_searches_food_then_cat()
     test_hungry_dog_uses_food_then_feed_action()
     test_where_is_vase_searches_before_observe()
+    test_follow_request_uses_follow_action()
     test_coerce_rejects_detected_object_plan_when_user_requested_other_targets()
     test_prompt_requests_intermediate_step_planning()
     print("LLM sequence generator tests passed")

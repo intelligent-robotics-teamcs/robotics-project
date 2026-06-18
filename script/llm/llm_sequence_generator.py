@@ -54,6 +54,7 @@ ALLOWED_ACTIONS = [
     "observe",
     "search",
     "feed",
+    "follow",
     "wait",
     "report",
 ]
@@ -66,6 +67,7 @@ ACTION_CAPABILITIES = {
     ),
     "observe": "Inspect or confirm the target once it is visible or reached.",
     "feed": "Give a prepared food item to a pet target.",
+    "follow": "Track a moving pet or person using vision feedback.",
     "wait": "Pause for a specified duration.",
     "report": "Tell the user the result or final status.",
 }
@@ -90,6 +92,11 @@ WAIT_PARAMS = {
     "duration_sec": 2.0,
 }
 
+FOLLOW_PARAMS = {
+    "duration_sec": 10.0,
+    "safe_distance_m": 1.0,
+}
+
 REPORT_MESSAGES = {
     "feeding": "feeding scenario completed",
     "play": "play scenario completed",
@@ -101,6 +108,7 @@ REPORT_MESSAGES = {
     "chair_check": "chair check completed",
     "apple_check": "apple check completed",
     "ball_check": "ball check completed",
+    "follow": "follow completed",
     "no_valid_target": "no valid target detected",
 }
 
@@ -262,6 +270,15 @@ Available actions:
      "retry_count": 0
    }
 
+6. follow
+   Purpose: keep a moving pet/person centered in the camera and follow slowly.
+   Allowed objects: dog, cat, person.
+   Params:
+   {
+     "duration_sec": 10.0,
+     "safe_distance_m": 1.0
+   }
+
 Planning rules:
 - Generate 1 to 5 steps.
 - Always end with report.
@@ -271,6 +288,7 @@ Planning rules:
 - If the user asks for feeding, food, hunger, or meal care, include approach apple and observe dog.
 - If the user asks for play or entertainment, include approach ball and observe dog.
 - If the user asks to check or monitor a fragile object like vase, use observe vase and report. Never approach vase.
+- If the user asks to follow or track a pet/person, search it first, then follow it, then report.
 - If the user asks to check a specific static object, approach it first, then optionally observe it, then report.
 - If the user explicitly asks to find/search something, use search before follow-up actions.
 - If the user mentions multiple objects, create a sequence that visits or observes them in the user's requested order.
@@ -330,6 +348,12 @@ ACTION_SEQUENCE_SCHEMA = {
                                     {"type": "null"},
                                 ]
                             },
+                            "safe_distance_m": {
+                                "anyOf": [
+                                    {"type": "number"},
+                                    {"type": "null"},
+                                ]
+                            },
                             "message": {
                                 "anyOf": [
                                     {"type": "string"},
@@ -348,6 +372,7 @@ ACTION_SEQUENCE_SCHEMA = {
                             "goal_tolerance_m",
                             "retry_count",
                             "duration_sec",
+                            "safe_distance_m",
                             "message",
                             "item",
                         ],
@@ -439,6 +464,10 @@ def feed_step(step_id: int, object_name: str, item: str = "apple") -> dict[str, 
     return make_step(step_id, "feed", object_name, {"item": item})
 
 
+def follow_step(step_id: int, object_name: str) -> dict[str, Any]:
+    return make_step(step_id, "follow", object_name, FOLLOW_PARAMS)
+
+
 def wait_step(step_id: int) -> dict[str, Any]:
     return make_step(step_id, "wait", None, WAIT_PARAMS)
 
@@ -491,6 +520,14 @@ def pet_monitoring_sequence(object_name: str) -> list[dict[str, Any]]:
         search_step(1, object_name),
         observe_step(2, object_name),
         report_step(3, REPORT_MESSAGES["pet_monitoring"]),
+    ]
+
+
+def follow_sequence(object_name: str) -> list[dict[str, Any]]:
+    return [
+        search_step(1, object_name),
+        follow_step(2, object_name),
+        report_step(3, REPORT_MESSAGES["follow"]),
     ]
 
 
@@ -652,6 +689,16 @@ def smart_plan_sequence(
     if "vase" in requested_objects:
         return vase_safety_sequence()
 
+    if has_any(text, ["follow", "track", "따라", "쫓아", "추적"]):
+        for candidate in ["dog", "cat", "person"]:
+            if candidate in requested_objects:
+                return follow_sequence(candidate)
+        if "dog" in labels:
+            return follow_sequence("dog")
+        if "cat" in labels:
+            return follow_sequence("cat")
+        return follow_sequence("dog")
+
     if has_any(
         text,
         ["밥", "급식", "먹이", "먹을", "food", "meal", "feed", "rice", "배고"],
@@ -800,6 +847,20 @@ def compact_params(action: str, params: dict[str, Any] | None) -> dict[str, Any]
             "item": str(param_value(params, "item", FEED_PARAMS["item"])),
         }
 
+    if action == "follow":
+        return {
+            "duration_sec": float(
+                param_value(params, "duration_sec", FOLLOW_PARAMS["duration_sec"])
+            ),
+            "safe_distance_m": float(
+                param_value(
+                    params,
+                    "safe_distance_m",
+                    FOLLOW_PARAMS["safe_distance_m"],
+                )
+            ),
+        }
+
     if action == "report":
         message = params.get("message") or "sequence completed"
         return {
@@ -831,6 +892,9 @@ def is_valid_step(step: dict[str, Any]) -> bool:
 
         if action == "search":
             return object_name in ALLOWED_OBJECTS
+
+        if action == "follow":
+            return object_name in {"dog", "cat", "person"}
 
         return False
 
@@ -1013,6 +1077,7 @@ Planning policy:
 - Use approach for reachable navigation targets when the robot should move near them.
 - Use observe when the robot should check, monitor, inspect, or confirm the state of an object or pet.
 - Use search only when the user explicitly asks to find/search/locate something, or when the task clearly depends on locating a pet first.
+- Use follow when the user asks the robot to follow, track, or keep up with a moving pet/person.
 - Use wait only when the user request implies a delay, pause, or waiting period.
 - Use feed only when the user explicitly asks to feed the pet or the request clearly implies meal/food care.
 - If the user requests multiple targets, preserve the requested order.
@@ -1040,6 +1105,8 @@ Useful planning patterns:
   approach object -> observe object -> report
 - Pet state check:
   search dog -> observe dog -> report
+- Follow request:
+  search dog -> follow dog -> report
 - Vase safety check:
   observe vase -> report
 - Multi-target request:
@@ -1084,10 +1151,12 @@ Output rules:
    duration_sec=2.0 unless the user requested a different duration.
 11. feed params must include:
    item=apple unless requested otherwise.
-12. report params must include:
+12. follow params must include:
+   duration_sec=10.0, safe_distance_m=1.0.
+13. report params must include:
    message.
-13. Include only params needed for that action. Do not add unused params with null.
-14. If no executable plan can be made, return wait 2 seconds and report "no valid target detected".
+14. Include only params needed for that action. Do not add unused params with null.
+15. If no executable plan can be made, return wait 2 seconds and report "no valid target detected".
 
 Required JSON shape:
 {{

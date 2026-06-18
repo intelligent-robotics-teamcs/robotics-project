@@ -44,6 +44,10 @@ follow:
     max_velocity: 0.25
     update_rate: 10
     target_lost_timeout: 3
+    detection_topic: "/vision/detections"
+    cmd_vel_topic: "/cmd_vel"
+    desired_bbox_height_px: 190.0
+    max_angular_velocity: 0.45
 
 wait:
   description: "Wait for specified duration"
