@@ -30,10 +30,10 @@ targets:
 
   chair_zone:
     frame_id: "map"
-    x: -0.95
-    y: -0.82
-    yaw: -2.42
-    description: "Chair approach viewpoint, kept about 0.8 m from the chair center"
+    x: 0.2824
+    y: 1.9152
+    yaw: 1.4244
+    description: "Chair approach viewpoint, kept about 0.8 m from the adjusted chair center"
 
   cat_zone:
     frame_id: "map"
@@ -76,9 +76,9 @@ object_centers:
 
   chair:
     frame_id: "map"
-    x: -1.55
-    y: -1.35
-    yaw: 2.3562
+    x: 0.3991
+    y: 2.7067
+    yaw: -0.0032
     description: "Gazebo chair model center used by face_target"
 
   cat:
