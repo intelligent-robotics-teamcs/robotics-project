@@ -1341,6 +1341,7 @@ def call_llm_api(
         return {
             "comment": "",
             "sequence": smart_plan_sequence(user_text, detected_labels),
+            "planner": "fallback",
         }
 
     try:
@@ -1364,7 +1365,8 @@ def call_llm_api(
                 raw_result,
                 user_text=user_text,
                 detected_labels=detected_labels,
-            )
+            ),
+            "planner": "openai",
         }
 
     except Exception:
@@ -1373,6 +1375,7 @@ def call_llm_api(
         return {
             "comment": "",
             "sequence": smart_plan_sequence(user_text, detected_labels),
+            "planner": "fallback_after_error",
         }
 
 

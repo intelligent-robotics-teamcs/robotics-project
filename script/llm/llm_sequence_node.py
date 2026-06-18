@@ -434,6 +434,12 @@ class LLMSequenceNode(Node):
         try:
             result = call_llm_api(user_text, detected_labels)
             sequence = result.get("sequence", []) if isinstance(result, dict) else []
+            planner = (
+                result.get("planner", "unknown")
+                if isinstance(result, dict)
+                else "unknown"
+            )
+            self.get_logger().info(f"Planner source: {planner}")
             agent_comment, agent_flow = build_agent_response(
                 sequence,
                 str(result.get("comment") or "") if isinstance(result, dict) else "",
