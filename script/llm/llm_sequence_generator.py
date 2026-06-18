@@ -220,7 +220,6 @@ Available objects:
 - dog: pet target. Can be observed or followed.
 - cat: pet target. Can be approached or observed.
 - apple: food target. Can be approached.
-- ball: toy target. Can be approached.
 - bed: static location. Can be approached or observed.
 - chair: static object. Can be approached or observed.
 - vase: fragile object. Must NOT be approached. Observe only.
