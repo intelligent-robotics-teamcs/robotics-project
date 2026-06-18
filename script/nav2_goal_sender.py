@@ -290,9 +290,47 @@ class Nav2GoalSender(Node):
         self.get_logger().info("Goal accepted by Nav2.")
 
         result_future = goal_handle.get_result_async()
+        within_tolerance_since = None
+        distance_success_hold_sec = 0.5
 
         while not result_future.done():
             rclpy.spin_once(self, timeout_sec=0.1)
+
+            latest_distance = self._latest_distance_remaining
+            if (
+                latest_distance is not None
+                and latest_distance <= goal_tolerance_m
+            ):
+                if within_tolerance_since is None:
+                    within_tolerance_since = time.monotonic()
+
+                if (
+                    time.monotonic() - within_tolerance_since
+                    >= distance_success_hold_sec
+                ):
+                    self.get_logger().warn(
+                        f"Distance reached tolerance "
+                        f"({latest_distance:.2f} m <= {goal_tolerance_m:.2f} m). "
+                        "Canceling Nav2 goal so face_target can handle final yaw."
+                    )
+
+                    cancel_future = goal_handle.cancel_goal_async()
+
+                    while not cancel_future.done():
+                        rclpy.spin_once(self, timeout_sec=0.1)
+
+                    return NavigationResult(
+                        state=NavigationState.SUCCESS,
+                        object_name=object_name,
+                        target_name=target_name,
+                        min_distance_remaining=self._min_distance_remaining,
+                        message=(
+                            "Reached goal distance tolerance before Nav2 "
+                            "orientation result."
+                        )
+                    )
+            else:
+                within_tolerance_since = None
 
             if time.monotonic() - start_time > timeout_sec:
                 min_distance = self._min_distance_remaining
