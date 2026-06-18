@@ -41,7 +41,7 @@ follow:
   framework: "Nav2 + Vision feedback"
   parameters:
     desired_distance: 1.0
-    max_velocity: 0.8
+    max_velocity: 0.25
     update_rate: 10
     target_lost_timeout: 3
 

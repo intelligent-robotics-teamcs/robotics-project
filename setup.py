@@ -67,6 +67,7 @@ setup(
             'llm_sequence_node = script.llm.llm_sequence_node:main',
             'agent_console = script.llm.agent_console:main',
             'initial_scan_rotator = script.sanity_checks.initial_scan_rotator:main',
+            'moving_pet_targets = script.sanity_checks.moving_pet_targets:main',
             'multi_target_runner = script.sanity_checks.multi_target_runner:main',
             'run_yolo_inference = script.sanity_checks.run_yolo_inference:main',
             'test_pipeline = script.sanity_checks.test_pipeline:main',
