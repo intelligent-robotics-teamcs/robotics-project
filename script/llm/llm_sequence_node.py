@@ -87,6 +87,38 @@ def describe_sequence_step(step):
     return str(action or "작업")
 
 
+def summarize_sequence_comment(steps, feed_step):
+    if not feed_step:
+        return ""
+
+    feed_params = feed_step.get("params")
+    feed_params = feed_params if isinstance(feed_params, dict) else {}
+    item = display_object_name(feed_params.get("item") or "apple")
+    pet = display_object_name(feed_step.get("object"))
+    feed_index = steps.index(feed_step)
+    prior_targets = []
+
+    for step in steps[:feed_index]:
+        if step.get("action") not in {"approach", "observe"}:
+            continue
+
+        target = step.get("object")
+        if target in {None, "apple", feed_step.get("object")}:
+            continue
+
+        if target not in prior_targets:
+            prior_targets.append(target)
+
+    if prior_targets:
+        prior_text = ", ".join(
+            display_object_name(target)
+            for target in prior_targets
+        )
+        return f"{prior_text}를 확인한 뒤 {item}로 {pet}에게 급식하겠습니다."
+
+    return f"{item}를 준비한 뒤 {pet}에게 급식하겠습니다."
+
+
 def build_agent_response(sequence, comment: str = ""):
     comment = (comment or "").strip()
     steps = [
@@ -117,6 +149,9 @@ def build_agent_response(sequence, comment: str = ""):
         None,
     )
     has_report = any(step.get("action") == "report" for step in steps)
+
+    if not comment:
+        comment = summarize_sequence_comment(steps, feed_step)
 
     if not comment and feed_step:
         feed_params = feed_step.get("params")

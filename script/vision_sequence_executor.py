@@ -19,6 +19,8 @@ if default_fastdds_profile.exists():
 import rclpy
 
 import json
+import re
+import select
 import signal
 import subprocess
 import tempfile
@@ -33,6 +35,14 @@ except ImportError:
 
 
 DEFAULT_WORKSPACE_PATH = str(Path(__file__).resolve().parents[1])
+STEP_LINE_RE = re.compile(
+    r"^\[STEP\]\s+"
+    r"id=(?P<step_id>\S+)\s+"
+    r"action=(?P<action>\S+)\s+"
+    r"object=(?P<object>\S+)\s+"
+    r"attempt=(?P<attempt>\d+)/(?P<max_attempts>\d+)"
+)
+SEARCH_FOUND_LINE_RE = re.compile(r"^\[SEARCH\]\s+(?P<object>\S+)\s+detected")
 
 
 class VisionSequenceExecutorNode(Node):
@@ -201,7 +211,7 @@ class VisionSequenceExecutorNode(Node):
         command = (
             "source /opt/ros/humble/setup.bash && "
             f"source {self.workspace_path}/install/setup.bash && "
-            f"python3 {self.workspace_path}/script/sequence_executor.py "
+            f"python3 -u {self.workspace_path}/script/sequence_executor.py "
             f"--sequence-file {sequence_file.name} "
             f"--sequence-name vision_{int(time.time())}"
         )
@@ -217,6 +227,7 @@ class VisionSequenceExecutorNode(Node):
 
         env["ROS_LOCALHOST_ONLY"] = "0"
         env["ROS_DISABLE_LOANED_MESSAGES"] = "1"
+        env["PYTHONUNBUFFERED"] = "1"
 
         self._process = subprocess.Popen(
             command,
@@ -224,6 +235,10 @@ class VisionSequenceExecutorNode(Node):
             executable="/bin/bash",
             env=env,
             start_new_session=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
         )
 
         self._sequence_file = sequence_file.name
@@ -246,10 +261,14 @@ class VisionSequenceExecutorNode(Node):
         if self._process is None:
             return
 
+        self.drain_process_output()
+
         return_code = self._process.poll()
 
         if return_code is None:
             return
+
+        self.drain_process_output(force=True)
 
         sequence = self._current_sequence
 
@@ -285,7 +304,97 @@ class VisionSequenceExecutorNode(Node):
         self._current_sequence = []
         self._has_executed = True
 
-    def publish_status(self, event, sequence, status, message=""):
+    def drain_process_output(self, force=False):
+        if self._process is None or self._process.stdout is None:
+            return
+
+        while True:
+            if not force:
+                ready, _, _ = select.select(
+                    [self._process.stdout],
+                    [],
+                    [],
+                    0,
+                )
+                if not ready:
+                    return
+
+            line = self._process.stdout.readline()
+            if not line:
+                return
+
+            line = line.rstrip()
+            if line:
+                self.handle_process_output_line(line)
+
+            if force:
+                continue
+
+    def handle_process_output_line(self, line):
+        self.get_logger().info(f"[SEQUENCE_OUT] {line}")
+
+        step_match = STEP_LINE_RE.match(line)
+        if step_match:
+            step_id = self.parse_optional_int(step_match.group("step_id"))
+            action = step_match.group("action")
+            object_name = self.parse_optional_object(step_match.group("object"))
+            step = self.find_current_step(step_id, action, object_name)
+
+            self.publish_status(
+                "step_started",
+                self._current_sequence,
+                ActionStatus.RUNNING.value,
+                step=step,
+                action=action,
+                object_name=object_name,
+                attempt=int(step_match.group("attempt")),
+                max_attempts=int(step_match.group("max_attempts")),
+            )
+            return
+
+        found_match = SEARCH_FOUND_LINE_RE.match(line)
+        if found_match:
+            object_name = self.parse_optional_object(found_match.group("object"))
+            self.publish_status(
+                "object_found",
+                self._current_sequence,
+                ActionStatus.SUCCESS.value,
+                action="search",
+                object_name=object_name,
+            )
+
+    def parse_optional_int(self, value):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    def parse_optional_object(self, value):
+        if value in {None, "None", "null"}:
+            return None
+        return value
+
+    def find_current_step(self, step_id, action, object_name):
+        for step in self._current_sequence:
+            if not isinstance(step, dict):
+                continue
+            if step_id is not None and step.get("step_id") == step_id:
+                return step
+
+        for step in self._current_sequence:
+            if not isinstance(step, dict):
+                continue
+            if step.get("action") == action and step.get("object") == object_name:
+                return step
+
+        return {
+            "step_id": step_id,
+            "action": action,
+            "object": object_name,
+            "params": {},
+        }
+
+    def publish_status(self, event, sequence, status, message="", **extra):
         payload = {
             "event": event,
             "status": status,
@@ -293,6 +402,7 @@ class VisionSequenceExecutorNode(Node):
             "sequence": sequence,
             "message": message,
         }
+        payload.update(extra)
 
         self.status_publisher.publish(
             String(
