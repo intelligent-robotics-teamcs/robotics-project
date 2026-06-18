@@ -80,7 +80,6 @@ APPROACH_PARAMS = {
 
 OBSERVE_PARAMS = {
     "duration_sec": 5.0,
-    "verify_timeout_sec": 8.0,
 }
 
 SEARCH_PARAMS = {
@@ -220,6 +219,7 @@ Available objects:
 - dog: pet target. Can be observed or followed.
 - cat: pet target. Can be approached or observed.
 - apple: food target. Can be approached.
+- ball: toy target. Can be approached.
 - bed: static location. Can be approached or observed.
 - chair: static object. Can be approached or observed.
 - vase: fragile object. Must NOT be approached. Observe only.
@@ -504,11 +504,12 @@ def static_checks_then_feeding_sequence(
         if object_name in seen_static_objects:
             continue
         seen_static_objects.add(object_name)
+        sequence.append(search_step(len(sequence) + 1, object_name))
         sequence.append(approach_step(len(sequence) + 1, object_name))
         sequence.append(observe_step(len(sequence) + 1, object_name))
 
+    sequence.append(search_step(len(sequence) + 1, "apple"))
     sequence.append(approach_step(len(sequence) + 1, "apple"))
-    sequence.append(observe_step(len(sequence) + 1, "apple"))
     sequence.append(search_step(len(sequence) + 1, pet_object))
     sequence.append(feed_step(len(sequence) + 1, pet_object))
     sequence.append(report_step(len(sequence) + 1, REPORT_MESSAGES["feeding"]))
@@ -572,10 +573,11 @@ def object_check_sequence(object_name: str) -> list[dict[str, Any]]:
     # target.yaml에 정의된 해당 object zone으로 이동
     if object_name in STATIC_APPROACH_OBJECTS:
         return [
-            approach_step(1, object_name),
-            observe_step(2, object_name),
+            search_step(1, object_name),
+            approach_step(2, object_name),
+            observe_step(3, object_name),
             report_step(
-                3,
+                4,
                 REPORT_MESSAGES.get(
                     message_key,
                     f"{object_name} check completed",
@@ -676,11 +678,12 @@ def multi_object_check_sequence(object_names: list[str]) -> list[dict[str, Any]]
     sequence = []
 
     for object_name in object_names:
+        sequence.append(search_step(len(sequence) + 1, object_name))
+
         if object_name in STATIC_APPROACH_OBJECTS:
             sequence.append(approach_step(len(sequence) + 1, object_name))
             sequence.append(observe_step(len(sequence) + 1, object_name))
         else:
-            sequence.append(search_step(len(sequence) + 1, object_name))
             sequence.append(observe_step(len(sequence) + 1, object_name))
 
     sequence.append(
@@ -849,13 +852,6 @@ def compact_params(action: str, params: dict[str, Any] | None) -> dict[str, Any]
         return {
             "duration_sec": float(
                 param_value(params, "duration_sec", OBSERVE_PARAMS["duration_sec"])
-            ),
-            "verify_timeout_sec": float(
-                param_value(
-                    params,
-                    "verify_timeout_sec",
-                    OBSERVE_PARAMS["verify_timeout_sec"],
-                )
             ),
         }
 

@@ -770,7 +770,7 @@
     <include>
       <uri>model://chair</uri>
       <name>sanity_chair</name>
-      <pose>0.399081 2.70669 0 0 0 -0.003238</pose>
+      <pose>-1.55 -1.35 0 0 0 2.3562</pose>
     </include>
     <include>
       <uri>model://vase</uri>

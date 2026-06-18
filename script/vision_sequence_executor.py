@@ -42,14 +42,6 @@ STEP_LINE_RE = re.compile(
     r"object=(?P<object>\S+)\s+"
     r"attempt=(?P<attempt>\d+)/(?P<max_attempts>\d+)"
 )
-STEP_RESULT_LINE_RE = re.compile(
-    r"^\[STEP_RESULT\]\s+"
-    r"id=(?P<step_id>\S+)\s+"
-    r"action=(?P<action>\S+)\s+"
-    r"object=(?P<object>\S+)\s+"
-    r"status=(?P<status>\S+)\s+"
-    r"attempts=(?P<attempts>\d+)"
-)
 SEARCH_FOUND_LINE_RE = re.compile(r"^\[SEARCH\]\s+(?P<object>\S+)\s+detected")
 
 
@@ -357,25 +349,6 @@ class VisionSequenceExecutorNode(Node):
                 object_name=object_name,
                 attempt=int(step_match.group("attempt")),
                 max_attempts=int(step_match.group("max_attempts")),
-            )
-            return
-
-        result_match = STEP_RESULT_LINE_RE.match(line)
-        if result_match:
-            step_id = self.parse_optional_int(result_match.group("step_id"))
-            action = result_match.group("action")
-            object_name = self.parse_optional_object(result_match.group("object"))
-            step = self.find_current_step(step_id, action, object_name)
-            status = result_match.group("status")
-
-            self.publish_status(
-                "step_finished",
-                self._current_sequence,
-                status,
-                step=step,
-                action=action,
-                object_name=object_name,
-                attempts=int(result_match.group("attempts")),
             )
             return
 

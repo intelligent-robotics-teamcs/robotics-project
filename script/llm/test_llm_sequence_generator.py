@@ -25,22 +25,11 @@ def load_cases() -> list[dict]:
 
 
 def without_search_steps(sequence: list[dict]) -> list[dict]:
-    def normalize_step(step: dict, step_id: int) -> dict:
-        normalized = {
-            **step,
-            "step_id": step_id,
-        }
-        params = normalized.get("params")
-        if isinstance(params, dict) and "verify_timeout_sec" in params:
-            normalized["params"] = {
-                key: value
-                for key, value in params.items()
-                if key != "verify_timeout_sec"
-            }
-        return normalized
-
     return [
-        normalize_step(step, index)
+        {
+            **step,
+            "step_id": index,
+        }
         for index, step in enumerate(
             [
                 step
@@ -123,7 +112,6 @@ def test_coerce_fills_executor_params_and_step_ids():
             "object": "chair",
             "params": {
                 "duration_sec": 5.0,
-                "verify_timeout_sec": 8.0,
             },
         },
         {
@@ -196,7 +184,6 @@ def test_coerce_preserves_llm_multi_step_plan():
             "object": "dog",
             "params": {
                 "duration_sec": 5.0,
-                "verify_timeout_sec": 8.0,
             },
         },
         {
@@ -233,7 +220,6 @@ def test_user_request_targets_override_visible_vase():
             "object": "dog",
             "params": {
                 "duration_sec": 5.0,
-                "verify_timeout_sec": 8.0,
             },
         },
         {
@@ -252,7 +238,6 @@ def test_user_request_targets_override_visible_vase():
             "object": "cat",
             "params": {
                 "duration_sec": 5.0,
-                "verify_timeout_sec": 8.0,
             },
         },
         {
@@ -349,10 +334,11 @@ def test_feed_after_chair_preserves_chair_first():
         (step["action"], step["object"])
         for step in actual
     ] == [
+        ("search", "chair"),
         ("approach", "chair"),
         ("observe", "chair"),
+        ("search", "apple"),
         ("approach", "apple"),
-        ("observe", "apple"),
         ("search", "dog"),
         ("feed", "dog"),
         ("report", None),
