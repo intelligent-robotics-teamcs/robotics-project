@@ -100,6 +100,7 @@ def face_target_action(
 
     import rclpy
     from geometry_msgs.msg import Twist
+    from geometry_msgs.msg import PoseWithCovarianceStamped
     from nav_msgs.msg import Odometry
 
     def normalize_angle(angle: float) -> float:
@@ -135,6 +136,12 @@ def face_target_action(
         "y": 0.0,
         "yaw": 0.0,
     }
+    amcl_current = {
+        "ready": False,
+        "x": 0.0,
+        "y": 0.0,
+        "yaw": 0.0,
+    }
 
     def odom_callback(msg: Odometry):
         current["x"] = msg.pose.pose.position.x
@@ -142,8 +149,20 @@ def face_target_action(
         current["yaw"] = yaw_from_quaternion(msg.pose.pose.orientation)
         current["ready"] = True
 
+    def amcl_callback(msg: PoseWithCovarianceStamped):
+        amcl_current["x"] = msg.pose.pose.position.x
+        amcl_current["y"] = msg.pose.pose.position.y
+        amcl_current["yaw"] = yaw_from_quaternion(msg.pose.pose.orientation)
+        amcl_current["ready"] = True
+
     cmd_pub = node.create_publisher(Twist, cmd_vel_topic, 10)
     odom_sub = node.create_subscription(Odometry, "/odom", odom_callback, 10)
+    amcl_sub = node.create_subscription(
+        PoseWithCovarianceStamped,
+        "/amcl_pose",
+        amcl_callback,
+        10,
+    )
 
     tf_buffer = None
     tf_listener = None
@@ -178,7 +197,14 @@ def face_target_action(
             except Exception:
                 pass
 
-        if current["ready"]:
+        if frame_id == "map" and amcl_current["ready"]:
+            return (
+                amcl_current["x"],
+                amcl_current["y"],
+                amcl_current["yaw"],
+            )
+
+        if frame_id != "map" and current["ready"]:
             return current["x"], current["y"], current["yaw"]
 
         return None
@@ -238,6 +264,7 @@ def face_target_action(
 
     finally:
         publish_stop()
+        node.destroy_subscription(amcl_sub)
         node.destroy_subscription(odom_sub)
         node.destroy_publisher(cmd_pub)
 
