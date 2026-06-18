@@ -228,7 +228,7 @@ class SequenceExecutor:
             verify_status = actions.verify_detection_action(
                 node=nav_node,
                 object_name=object_name,
-                timeout_sec=float(params.get("verify_timeout_sec", 4.0)),
+                timeout_sec=float(params.get("verify_timeout_sec", 8.0)),
                 detection_topic=str(
                     params.get("detection_topic", "/vision/detections")
                 ),

@@ -80,6 +80,7 @@ APPROACH_PARAMS = {
 
 OBSERVE_PARAMS = {
     "duration_sec": 5.0,
+    "verify_timeout_sec": 8.0,
 }
 
 SEARCH_PARAMS = {
@@ -849,6 +850,13 @@ def compact_params(action: str, params: dict[str, Any] | None) -> dict[str, Any]
         return {
             "duration_sec": float(
                 param_value(params, "duration_sec", OBSERVE_PARAMS["duration_sec"])
+            ),
+            "verify_timeout_sec": float(
+                param_value(
+                    params,
+                    "verify_timeout_sec",
+                    OBSERVE_PARAMS["verify_timeout_sec"],
+                )
             ),
         }
 
