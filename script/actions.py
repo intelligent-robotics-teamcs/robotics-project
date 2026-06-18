@@ -277,13 +277,22 @@ def detection_matches_target(detection: dict, object_name: str) -> bool:
     target = normalize_detection_label(object_name)
 
     return bool(label) and label == target
-def extract_detection_list(data: str) -> list[dict]:
+
+
+def extract_detection_payload(data: str) -> tuple[list[dict], float | None]:
     try:
         payload = json.loads(data)
     except json.JSONDecodeError:
-        return []
+        return [], None
+
+    stamp_wall = None
 
     if isinstance(payload, dict):
+        try:
+            stamp_wall = float(payload["stamp_wall"])
+        except (KeyError, TypeError, ValueError):
+            stamp_wall = None
+
         detections = (
             payload.get("detections")
             or payload.get("filtered_detections")
@@ -295,11 +304,19 @@ def extract_detection_list(data: str) -> list[dict]:
     else:
         detections = []
 
-    return [
-        detection
-        for detection in detections
-        if isinstance(detection, dict)
-    ]
+    return (
+        [
+            detection
+            for detection in detections
+            if isinstance(detection, dict)
+        ],
+        stamp_wall,
+    )
+
+
+def extract_detection_list(data: str) -> list[dict]:
+    detections, _ = extract_detection_payload(data)
+    return detections
 
 
 def search_action(
@@ -313,6 +330,8 @@ def search_action(
     patrol_objects: list[str] | None = None,
     navigation_timeout_sec: float = 45.0,
     goal_tolerance_m: float = 0.35,
+    detection_max_age_sec: float = 1.0,
+    required_detection_count: int = 2,
 ) -> ActionStatus:
     """
     Search for an object using live detections.
@@ -328,13 +347,38 @@ def search_action(
 
     found = {
         "value": False,
+        "count": 0,
     }
+    start_wall_time = time.time()
+    detection_max_age_sec = max(float(detection_max_age_sec), 0.05)
+    required_detection_count = max(int(required_detection_count), 1)
 
     def detection_callback(msg):
-        for detection in extract_detection_list(msg.data):
-            if detection_matches_target(detection, object_name):
+        detections, stamp_wall = extract_detection_payload(msg.data)
+        now_wall = time.time()
+
+        if stamp_wall is None:
+            stamp_wall = now_wall
+
+        if stamp_wall + 0.05 < start_wall_time:
+            return
+
+        if now_wall - stamp_wall > detection_max_age_sec:
+            return
+
+        matched = any(
+            detection_matches_target(detection, object_name)
+            for detection in detections
+        )
+
+        if matched:
+            found["count"] += 1
+            if found["count"] >= required_detection_count:
                 found["value"] = True
-                return
+            return
+
+        if detections:
+            found["count"] = 0
 
     publisher = node.create_publisher(Twist, cmd_vel_topic, 10)
     subscription = node.create_subscription(
@@ -368,7 +412,11 @@ def search_action(
         return found["value"]
 
     try:
-        print(f"[SEARCH] searching for {object_name}")
+        print(
+            f"[SEARCH] searching for {object_name} "
+            f"(fresh<= {detection_max_age_sec:.1f}s, "
+            f"confirmations={required_detection_count})"
+        )
 
         if spin_scan(scan_duration_sec):
             print(f"[SEARCH] {object_name} detected")

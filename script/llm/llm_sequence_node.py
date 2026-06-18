@@ -259,6 +259,7 @@ class LLMSequenceNode(Node):
         self.declare_parameter("timer_period_sec", 5.0)
         self.declare_parameter("require_user_request", False)
         self.declare_parameter("interactive_input", False)
+        self.declare_parameter("detection_max_age_sec", 1.0)
 
         self.detected_labels = []
         self.last_valid_labels = []
@@ -272,6 +273,10 @@ class LLMSequenceNode(Node):
         self.interactive_input_enabled = self.get_bool_parameter("interactive_input")
 
         self.label_history = []
+        self.detection_max_age_sec = max(
+            0.1,
+            float(self.get_parameter("detection_max_age_sec").value),
+        )
 
         self.detection_sub = self.create_subscription(
             String,
@@ -380,13 +385,26 @@ class LLMSequenceNode(Node):
         try:
             detections = json.loads(msg.data)
 
+            stamp_wall = None
+
             if isinstance(detections, dict):
+                try:
+                    stamp_wall = float(detections["stamp_wall"])
+                except (KeyError, TypeError, ValueError):
+                    stamp_wall = None
+
                 detections = (
                     detections.get("detections")
                     or detections.get("filtered_detections")
                     or detections.get("objects")
                     or []
                 )
+
+            if (
+                stamp_wall is not None
+                and time.time() - stamp_wall > self.detection_max_age_sec
+            ):
+                return
 
             if not isinstance(detections, list):
                 self.get_logger().warn(

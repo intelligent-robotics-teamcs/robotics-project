@@ -240,6 +240,12 @@ class SequenceExecutor:
                 params.get("navigation_timeout_sec", 45.0)
             ),
             goal_tolerance_m=float(params.get("goal_tolerance_m", 0.35)),
+            detection_max_age_sec=float(
+                params.get("detection_max_age_sec", 1.0)
+            ),
+            required_detection_count=int(
+                params.get("required_detection_count", 2)
+            ),
         )
 
     def execute_report(self, step: dict) -> ActionStatus:

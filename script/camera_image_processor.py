@@ -275,11 +275,22 @@ class CameraImageProcessor(Node):
         filtered_detections,
         yolo_debug,
     ):
+        raw_payload = {
+            "stamp_wall": time.time(),
+            "frame_count": self.frame_count,
+            "detections": raw_detections,
+        }
+        filtered_payload = {
+            "stamp_wall": raw_payload["stamp_wall"],
+            "frame_count": self.frame_count,
+            "detections": filtered_detections,
+        }
+
         self.raw_detection_publisher.publish(
-            String(data=json.dumps(raw_detections, ensure_ascii=False))
+            String(data=json.dumps(raw_payload, ensure_ascii=False))
         )
         self.detection_publisher.publish(
-            String(data=json.dumps(filtered_detections, ensure_ascii=False))
+            String(data=json.dumps(filtered_payload, ensure_ascii=False))
         )
         self.yolo_debug_publisher.publish(
             String(data=json.dumps(yolo_debug, ensure_ascii=False))
