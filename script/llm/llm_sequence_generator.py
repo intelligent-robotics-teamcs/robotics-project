@@ -504,11 +504,9 @@ def static_checks_then_feeding_sequence(
         if object_name in seen_static_objects:
             continue
         seen_static_objects.add(object_name)
-        sequence.append(search_step(len(sequence) + 1, object_name))
         sequence.append(approach_step(len(sequence) + 1, object_name))
         sequence.append(observe_step(len(sequence) + 1, object_name))
 
-    sequence.append(search_step(len(sequence) + 1, "apple"))
     sequence.append(approach_step(len(sequence) + 1, "apple"))
     sequence.append(search_step(len(sequence) + 1, pet_object))
     sequence.append(feed_step(len(sequence) + 1, pet_object))
@@ -573,11 +571,10 @@ def object_check_sequence(object_name: str) -> list[dict[str, Any]]:
     # target.yaml에 정의된 해당 object zone으로 이동
     if object_name in STATIC_APPROACH_OBJECTS:
         return [
-            search_step(1, object_name),
-            approach_step(2, object_name),
-            observe_step(3, object_name),
+            approach_step(1, object_name),
+            observe_step(2, object_name),
             report_step(
-                4,
+                3,
                 REPORT_MESSAGES.get(
                     message_key,
                     f"{object_name} check completed",
@@ -678,12 +675,11 @@ def multi_object_check_sequence(object_names: list[str]) -> list[dict[str, Any]]
     sequence = []
 
     for object_name in object_names:
-        sequence.append(search_step(len(sequence) + 1, object_name))
-
         if object_name in STATIC_APPROACH_OBJECTS:
             sequence.append(approach_step(len(sequence) + 1, object_name))
             sequence.append(observe_step(len(sequence) + 1, object_name))
         else:
+            sequence.append(search_step(len(sequence) + 1, object_name))
             sequence.append(observe_step(len(sequence) + 1, object_name))
 
     sequence.append(

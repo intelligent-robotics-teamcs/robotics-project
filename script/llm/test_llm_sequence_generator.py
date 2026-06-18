@@ -334,10 +334,8 @@ def test_feed_after_chair_preserves_chair_first():
         (step["action"], step["object"])
         for step in actual
     ] == [
-        ("search", "chair"),
         ("approach", "chair"),
         ("observe", "chair"),
-        ("search", "apple"),
         ("approach", "apple"),
         ("search", "dog"),
         ("feed", "dog"),

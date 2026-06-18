@@ -158,6 +158,33 @@ def describe_action_progress(step: dict, attempt=None, max_attempts=None) -> str
     return text
 
 
+def describe_action_result(step: dict, status: str) -> str:
+    action = step.get("action")
+    object_name = step.get("object")
+    target = display_object_name(object_name)
+
+    if status != "SUCCESS":
+        status_text = STATUS_TEXT.get(status, "완료하지 못했습니다")
+        return f"{describe_step(step)}이 {status_text}."
+
+    if action == "search":
+        return f"{target}를 찾았습니다."
+
+    if action == "observe":
+        return f"{target} 확인을 마쳤습니다."
+
+    if action == "approach":
+        return f"{target} 위치에 도착했습니다."
+
+    if action == "feed":
+        return f"{target} 급식을 완료했습니다."
+
+    if action == "follow":
+        return f"{target} 추종을 완료했습니다."
+
+    return ""
+
+
 def limit_text(text: str, max_chars: int) -> str:
     text = (text or "").strip()
     if max_chars <= 0 or len(text) <= max_chars:
@@ -284,11 +311,19 @@ class AgentConsole(Node):
             return
 
         if event == "object_found":
-            object_name = payload.get("object_name")
-            print(
-                f"agent: {display_object_name(object_name)}를 찾았습니다.",
-                flush=True,
-            )
+            return
+
+        if event == "step_finished":
+            step = payload.get("step")
+            if not isinstance(step, dict):
+                step = {
+                    "action": payload.get("action"),
+                    "object": payload.get("object_name"),
+                    "params": {},
+                }
+            result_text = describe_action_result(step, status)
+            if result_text:
+                print(f"agent: {result_text}", flush=True)
             return
 
         if event == "started":

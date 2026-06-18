@@ -143,6 +143,15 @@ class SequenceExecutor:
             )
         )
 
+        print(
+            "[STEP_RESULT] "
+            f"id={step.get('step_id')} "
+            f"action={step.get('action')} "
+            f"object={step.get('object')} "
+            f"status={last_status.value} "
+            f"attempts={attempt}"
+        )
+
         return last_status
 
     def execute_step(self, step: dict) -> ActionStatus:
