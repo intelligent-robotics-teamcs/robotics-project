@@ -39,6 +39,7 @@ class MovingPetTargets(Node):
         self.declare_parameter("cat_speed_mps", 0.05)
         self.declare_parameter("update_rate_hz", 10.0)
         self.declare_parameter("start_delay_sec", 5.0)
+        self.declare_parameter("set_entity_state_service", "/set_entity_state")
 
         speed_mps = max(0.01, float(self.get_parameter("speed_mps").value))
         cat_speed_mps = max(
@@ -55,6 +56,8 @@ class MovingPetTargets(Node):
             + max(0.0, float(self.get_parameter("start_delay_sec").value))
         )
         self.last_update_time = time.monotonic()
+        self.last_service_log_time = 0.0
+        self.service_ready_logged = False
 
         self.targets = [
             MovingTarget(
@@ -79,11 +82,14 @@ class MovingPetTargets(Node):
             ),
         ]
 
-        self.client = self.create_client(SetEntityState, "/set_entity_state")
+        self.service_name = str(
+            self.get_parameter("set_entity_state_service").value
+        )
+        self.client = self.create_client(SetEntityState, self.service_name)
         self.timer = self.create_timer(1.0 / update_rate_hz, self.tick)
 
         self.get_logger().info(
-            "[MOVING_PETS] waiting for /set_entity_state; "
+            f"[MOVING_PETS] waiting for {self.service_name}; "
             f"dog={speed_mps:.2f} m/s, cat={cat_speed_mps:.2f} m/s"
         )
 
@@ -97,11 +103,39 @@ class MovingPetTargets(Node):
 
         if not self.client.service_is_ready():
             self.client.wait_for_service(timeout_sec=0.0)
+            if now - self.last_service_log_time >= 2.0:
+                self.get_logger().warn(
+                    f"[MOVING_PETS] {self.service_name} is not available yet. "
+                    "Check that libgazebo_ros_state.so is loaded in the world."
+                )
+                self.last_service_log_time = now
             return
 
+        if not self.service_ready_logged:
+            self.get_logger().info(
+                f"[MOVING_PETS] connected to {self.service_name}; moving targets"
+            )
+            self.service_ready_logged = True
+
         for target in self.targets:
-            if target.pending is not None and not target.pending.done():
-                continue
+            if target.pending is not None:
+                if not target.pending.done():
+                    continue
+
+                try:
+                    result = target.pending.result()
+                    if not result.success:
+                        self.get_logger().warn(
+                            f"[MOVING_PETS] failed to move {target.entity_name}: "
+                            f"{result.status_message}"
+                        )
+                except Exception as exc:
+                    self.get_logger().warn(
+                        f"[MOVING_PETS] service call failed for "
+                        f"{target.entity_name}: {exc}"
+                    )
+
+                target.pending = None
 
             self.advance_target(target, dt)
             request = SetEntityState.Request()
