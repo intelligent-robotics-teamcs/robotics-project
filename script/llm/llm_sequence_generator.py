@@ -83,9 +83,9 @@ OBSERVE_PARAMS = {
 }
 
 SEARCH_PARAMS = {
-    "timeout_sec": 45.0,
-    "duration_sec": 4.0,
-    "retry_count": 0,
+    "timeout_sec": 120.0,
+    "duration_sec": 8.0,
+    "retry_count": 1,
 }
 
 WAIT_PARAMS = {
@@ -265,9 +265,9 @@ Available actions:
    Allowed objects: dog, cat, apple, ball, bed, chair, vase.
    Params:
    {
-     "timeout_sec": 45.0,
-     "duration_sec": 4.0,
-     "retry_count": 0
+     "timeout_sec": 120.0,
+     "duration_sec": 8.0,
+     "retry_count": 1
    }
 
 6. follow
@@ -1179,7 +1179,7 @@ Output rules:
 8. observe params must include:
    duration_sec=5.0.
 9. search params must include:
-   timeout_sec=45.0, duration_sec=4.0, retry_count=0.
+   timeout_sec=120.0, duration_sec=8.0, retry_count=1.
 10. wait params must include:
    duration_sec=2.0 unless the user requested a different duration.
 11. feed params must include:
@@ -1233,7 +1233,7 @@ def default_params_for_action(action: str) -> dict:
     if action == "observe":
         return {"duration_sec": 5.0}
     if action == "search":
-        return {"timeout_sec": 45.0, "duration_sec": 4.0, "retry_count": 0}
+        return {"timeout_sec": 120.0, "duration_sec": 8.0, "retry_count": 1}
     if action == "wait":
         return {"duration_sec": 2.0}
     if action == "feed":

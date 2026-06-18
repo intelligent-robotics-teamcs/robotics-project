@@ -230,14 +230,14 @@ class SequenceExecutor:
         return actions.search_action(
             node=nav_node,
             object_name=object_name,
-            timeout_sec=float(params.get("timeout_sec", 45.0)),
-            scan_duration_sec=float(params.get("duration_sec", 4.0)),
+            timeout_sec=float(params.get("timeout_sec", 120.0)),
+            scan_duration_sec=float(params.get("duration_sec", 8.0)),
             angular_speed=float(params.get("angular_speed", 0.35)),
             detection_topic=str(params.get("detection_topic", "/vision/detections")),
             cmd_vel_topic=str(params.get("cmd_vel_topic", "/cmd_vel")),
             patrol_objects=patrol_objects,
             navigation_timeout_sec=float(
-                params.get("navigation_timeout_sec", 20.0)
+                params.get("navigation_timeout_sec", 45.0)
             ),
             goal_tolerance_m=float(params.get("goal_tolerance_m", 0.35)),
         )

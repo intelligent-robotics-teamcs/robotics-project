@@ -209,9 +209,9 @@ def test_user_request_targets_override_visible_vase():
             "action": "search",
             "object": "dog",
             "params": {
-                "timeout_sec": 45.0,
-                "duration_sec": 4.0,
-                "retry_count": 0,
+                "timeout_sec": 120.0,
+                "duration_sec": 8.0,
+                "retry_count": 1,
             },
         },
         {
@@ -227,9 +227,9 @@ def test_user_request_targets_override_visible_vase():
             "action": "search",
             "object": "cat",
             "params": {
-                "timeout_sec": 45.0,
-                "duration_sec": 4.0,
-                "retry_count": 0,
+                "timeout_sec": 120.0,
+                "duration_sec": 8.0,
+                "retry_count": 1,
             },
         },
         {

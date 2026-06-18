@@ -305,13 +305,13 @@ def extract_detection_list(data: str) -> list[dict]:
 def search_action(
     node: Nav2GoalSender,
     object_name: str,
-    timeout_sec: float = 45.0,
-    scan_duration_sec: float = 4.0,
+    timeout_sec: float = 120.0,
+    scan_duration_sec: float = 8.0,
     angular_speed: float = 0.35,
     detection_topic: str = "/vision/detections",
     cmd_vel_topic: str = "/cmd_vel",
     patrol_objects: list[str] | None = None,
-    navigation_timeout_sec: float = 20.0,
+    navigation_timeout_sec: float = 45.0,
     goal_tolerance_m: float = 0.35,
 ) -> ActionStatus:
     """
