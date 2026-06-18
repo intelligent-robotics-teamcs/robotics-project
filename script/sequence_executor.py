@@ -191,9 +191,18 @@ class SequenceExecutor:
         duration_sec = float(params.get("duration_sec", 0.0))
         object_name = step.get("object")
 
-        if object_name == "chair" and bool(params.get("face_target", True)):
+        if object_name and bool(params.get("face_target", True)):
+            nav_node = self._get_nav_node()
+            object_centers = getattr(nav_node.resolver, "object_centers", {})
+
+            if object_name not in object_centers:
+                return actions.observe_action(
+                    object_name=object_name,
+                    duration_sec=max(duration_sec, 0.0),
+                )
+
             face_status = actions.face_target_action(
-                node=self._get_nav_node(),
+                node=nav_node,
                 object_name=object_name,
                 timeout_sec=float(params.get("face_timeout_sec", 8.0)),
                 yaw_tolerance_rad=float(
