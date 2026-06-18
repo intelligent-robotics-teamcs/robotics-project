@@ -67,6 +67,9 @@ class Nav2GoalSender(Node):
         )
 
         self.resolver = TargetResolver()
+        self.get_logger().info(
+            f"Target config: {getattr(self.resolver, 'config_path', 'unknown')}"
+        )
 
         self._latest_distance_remaining = None
         self._min_distance_remaining = None

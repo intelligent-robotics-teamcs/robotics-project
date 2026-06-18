@@ -1,6 +1,11 @@
 import yaml
 from pathlib import Path
 
+try:
+    from ament_index_python.packages import get_package_share_directory
+except ImportError:
+    get_package_share_directory = None
+
 
 class TargetResolver:
     """
@@ -29,13 +34,40 @@ class TargetResolver:
     }
 
     def __init__(self, target_config="../config/target.yaml"):
-        config_path = Path(__file__).resolve().parent / target_config
+        config_path = self._resolve_config_path(target_config)
+        self.config_path = config_path
 
         with open(config_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
 
         self.targets = data["targets"]
         self.object_centers = data.get("object_centers", {})
+
+    def _resolve_config_path(self, target_config: str) -> Path:
+        requested_path = Path(target_config)
+
+        if requested_path.is_absolute() and requested_path.exists():
+            return requested_path
+
+        if get_package_share_directory is not None:
+            try:
+                share_path = Path(get_package_share_directory("pet_robot_pkg"))
+                share_config = share_path / "config" / "target.yaml"
+                if share_config.exists():
+                    return share_config
+            except Exception:
+                pass
+
+        relative_path = Path(__file__).resolve().parent / target_config
+        if relative_path.exists():
+            return relative_path
+
+        for parent in Path(__file__).resolve().parents:
+            workspace_config = parent / "config" / "target.yaml"
+            if workspace_config.exists():
+                return workspace_config
+
+        return relative_path
 
     def get_pose(self, object_name):
         """
