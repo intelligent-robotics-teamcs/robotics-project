@@ -337,6 +337,7 @@ def test_feed_after_chair_preserves_chair_first():
         ("approach", "chair"),
         ("observe", "chair"),
         ("approach", "apple"),
+        ("observe", "apple"),
         ("search", "dog"),
         ("feed", "dog"),
         ("report", None),

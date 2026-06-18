@@ -302,6 +302,54 @@ def extract_detection_list(data: str) -> list[dict]:
     ]
 
 
+def verify_detection_action(
+    node,
+    object_name: str,
+    timeout_sec: float = 4.0,
+    detection_topic: str = "/vision/detections",
+) -> ActionStatus:
+    import rclpy
+    from std_msgs.msg import String
+
+    found = {
+        "value": False,
+    }
+
+    def detection_callback(msg):
+        for detection in extract_detection_list(msg.data):
+            if detection_matches_target(detection, object_name):
+                found["value"] = True
+                return
+
+    subscription = node.create_subscription(
+        String,
+        detection_topic,
+        detection_callback,
+        10,
+    )
+    deadline = time.monotonic() + max(timeout_sec, 0.1)
+
+    try:
+        node.get_logger().info(
+            f"[VERIFY] waiting for {object_name} detection on {detection_topic}"
+        )
+
+        while rclpy.ok() and time.monotonic() < deadline:
+            rclpy.spin_once(node, timeout_sec=0.05)
+
+            if found["value"]:
+                node.get_logger().info(f"[VERIFY] {object_name} detected")
+                return ActionStatus.SUCCESS
+
+        node.get_logger().warn(
+            f"[VERIFY] {object_name} not detected within {timeout_sec:.1f}s"
+        )
+        return ActionStatus.TIMEOUT
+
+    finally:
+        node.destroy_subscription(subscription)
+
+
 def search_action(
     node: Nav2GoalSender,
     object_name: str,

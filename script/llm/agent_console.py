@@ -167,6 +167,9 @@ def describe_action_result(step: dict, status: str) -> str:
         status_text = STATUS_TEXT.get(status, "완료하지 못했습니다")
         return f"{describe_step(step)}이 {status_text}."
 
+    if action == "approach":
+        return f"{target} 접근 위치에 도착했습니다."
+
     if action == "search":
         return f"{target}를 찾았습니다."
 

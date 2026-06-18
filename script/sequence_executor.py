@@ -199,6 +199,7 @@ class SequenceExecutor:
         params = step.get("params", {})
         duration_sec = float(params.get("duration_sec", 0.0))
         object_name = step.get("object")
+        nav_node = None
 
         if object_name and bool(params.get("face_target", True)):
             nav_node = self._get_nav_node()
@@ -221,6 +222,20 @@ class SequenceExecutor:
 
             if face_status not in {ActionStatus.SUCCESS, ActionStatus.SKIPPED}:
                 return face_status
+
+        if object_name and bool(params.get("verify_detection", True)):
+            nav_node = nav_node or self._get_nav_node()
+            verify_status = actions.verify_detection_action(
+                node=nav_node,
+                object_name=object_name,
+                timeout_sec=float(params.get("verify_timeout_sec", 4.0)),
+                detection_topic=str(
+                    params.get("detection_topic", "/vision/detections")
+                ),
+            )
+
+            if verify_status != ActionStatus.SUCCESS:
+                return verify_status
 
         return actions.observe_action(
             object_name=object_name,

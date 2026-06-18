@@ -508,6 +508,7 @@ def static_checks_then_feeding_sequence(
         sequence.append(observe_step(len(sequence) + 1, object_name))
 
     sequence.append(approach_step(len(sequence) + 1, "apple"))
+    sequence.append(observe_step(len(sequence) + 1, "apple"))
     sequence.append(search_step(len(sequence) + 1, pet_object))
     sequence.append(feed_step(len(sequence) + 1, pet_object))
     sequence.append(report_step(len(sequence) + 1, REPORT_MESSAGES["feeding"]))
