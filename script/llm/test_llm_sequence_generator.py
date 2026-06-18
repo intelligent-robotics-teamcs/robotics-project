@@ -324,6 +324,27 @@ def test_follow_request_uses_follow_action():
     }
 
 
+def test_feed_after_chair_preserves_chair_first():
+    actual = smart_plan_sequence(
+        "Check the chair and feed the dog after that",
+        ["dog", "chair"],
+    )
+
+    assert [
+        (step["action"], step["object"])
+        for step in actual
+    ] == [
+        ("search", "chair"),
+        ("approach", "chair"),
+        ("observe", "chair"),
+        ("search", "apple"),
+        ("approach", "apple"),
+        ("search", "dog"),
+        ("feed", "dog"),
+        ("report", None),
+    ]
+
+
 def test_coerce_rejects_detected_object_plan_when_user_requested_other_targets():
     actual = coerce_action_sequence(
         {
@@ -379,6 +400,7 @@ def main():
     test_hungry_dog_uses_food_then_feed_action()
     test_where_is_vase_searches_before_observe()
     test_follow_request_uses_follow_action()
+    test_feed_after_chair_preserves_chair_first()
     test_coerce_rejects_detected_object_plan_when_user_requested_other_targets()
     test_prompt_requests_intermediate_step_planning()
     print("LLM sequence generator tests passed")

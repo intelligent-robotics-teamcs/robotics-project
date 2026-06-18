@@ -493,6 +493,29 @@ def feeding_sequence(pet_object: str = "dog", search_food: bool = False) -> list
     return sequence
 
 
+def static_checks_then_feeding_sequence(
+    static_objects: list[str],
+    pet_object: str = "dog",
+) -> list[dict[str, Any]]:
+    sequence = []
+    seen_static_objects = set()
+
+    for object_name in static_objects:
+        if object_name in seen_static_objects:
+            continue
+        seen_static_objects.add(object_name)
+        sequence.append(search_step(len(sequence) + 1, object_name))
+        sequence.append(approach_step(len(sequence) + 1, object_name))
+        sequence.append(observe_step(len(sequence) + 1, object_name))
+
+    sequence.append(search_step(len(sequence) + 1, "apple"))
+    sequence.append(approach_step(len(sequence) + 1, "apple"))
+    sequence.append(search_step(len(sequence) + 1, pet_object))
+    sequence.append(feed_step(len(sequence) + 1, pet_object))
+    sequence.append(report_step(len(sequence) + 1, REPORT_MESSAGES["feeding"]))
+    return sequence
+
+
 def play_sequence() -> list[dict[str, Any]]:
     return [
         search_step(1, "ball"),
@@ -704,6 +727,16 @@ def smart_plan_sequence(
         ["밥", "급식", "먹이", "먹을", "food", "meal", "feed", "rice", "배고"],
     ):
         pet_object = "cat" if "cat" in requested_objects else "dog"
+        requested_static_targets = [
+            object_name
+            for object_name in requested_objects
+            if object_name in {"bed", "chair", "ball"}
+        ]
+        if requested_static_targets:
+            return static_checks_then_feeding_sequence(
+                requested_static_targets,
+                pet_object=pet_object,
+            )
         return feeding_sequence(
             pet_object=pet_object,
             search_food=True,
@@ -1369,13 +1402,14 @@ def call_llm_api(
             "planner": "openai",
         }
 
-    except Exception:
+    except Exception as exc:
         if not use_fallback:
             raise
         return {
             "comment": "",
             "sequence": smart_plan_sequence(user_text, detected_labels),
             "planner": "fallback_after_error",
+            "planner_error": str(exc),
         }
 
 

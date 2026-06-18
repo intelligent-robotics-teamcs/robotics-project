@@ -227,6 +227,7 @@ class LLMSequenceNode(Node):
 
         self.detected_labels = []
         self.last_valid_labels = []
+        self.empty_detection_count = 0
         self.last_sequence_key = None
         self.latest_user_request = ""
         self.user_request_id = 0
@@ -371,7 +372,15 @@ class LLMSequenceNode(Node):
 
             if labels:
                 self.last_valid_labels = labels
+                self.empty_detection_count = 0
             else:
+                self.empty_detection_count += 1
+                if self.empty_detection_count >= 3:
+                    self.last_valid_labels = []
+                    self.label_history = []
+                    self.detected_labels = []
+                    self.get_logger().info("Detected labels: []")
+                    return
                 labels = self.last_valid_labels
 
             self.label_history.extend(labels)
@@ -440,6 +449,11 @@ class LLMSequenceNode(Node):
                 else "unknown"
             )
             self.get_logger().info(f"Planner source: {planner}")
+            if planner == "fallback_after_error":
+                self.get_logger().warn(
+                    "OpenAI planner failed; using fallback planner: "
+                    f"{result.get('planner_error', 'unknown error')}"
+                )
             agent_comment, agent_flow = build_agent_response(
                 sequence,
                 str(result.get("comment") or "") if isinstance(result, dict) else "",
