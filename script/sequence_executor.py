@@ -187,8 +187,32 @@ class SequenceExecutor:
         return actions.wait_action(duration_sec=max(duration_sec, 0.0))
 
     def execute_observe(self, step: dict) -> ActionStatus:
-        duration_sec = float(step.get("params", {}).get("duration_sec", 0.0))
+        params = step.get("params", {})
+        duration_sec = float(params.get("duration_sec", 0.0))
         object_name = step.get("object")
+
+        if object_name and bool(params.get("face_target", True)):
+            nav_node = self._get_nav_node()
+            object_centers = getattr(nav_node.resolver, "object_centers", {})
+
+            if object_name not in object_centers:
+                return actions.observe_action(
+                    object_name=object_name,
+                    duration_sec=max(duration_sec, 0.0),
+                )
+
+            face_status = actions.face_target_action(
+                node=nav_node,
+                object_name=object_name,
+                timeout_sec=float(params.get("face_timeout_sec", 8.0)),
+                yaw_tolerance_rad=float(
+                    params.get("yaw_tolerance_rad", 0.12)
+                ),
+            )
+
+            if face_status not in {ActionStatus.SUCCESS, ActionStatus.SKIPPED}:
+                return face_status
+
         return actions.observe_action(
             object_name=object_name,
             duration_sec=max(duration_sec, 0.0),
@@ -206,16 +230,22 @@ class SequenceExecutor:
         return actions.search_action(
             node=nav_node,
             object_name=object_name,
-            timeout_sec=float(params.get("timeout_sec", 45.0)),
-            scan_duration_sec=float(params.get("duration_sec", 4.0)),
+            timeout_sec=float(params.get("timeout_sec", 120.0)),
+            scan_duration_sec=float(params.get("duration_sec", 8.0)),
             angular_speed=float(params.get("angular_speed", 0.35)),
             detection_topic=str(params.get("detection_topic", "/vision/detections")),
             cmd_vel_topic=str(params.get("cmd_vel_topic", "/cmd_vel")),
             patrol_objects=patrol_objects,
             navigation_timeout_sec=float(
-                params.get("navigation_timeout_sec", 20.0)
+                params.get("navigation_timeout_sec", 45.0)
             ),
             goal_tolerance_m=float(params.get("goal_tolerance_m", 0.35)),
+            detection_max_age_sec=float(
+                params.get("detection_max_age_sec", 1.0)
+            ),
+            required_detection_count=int(
+                params.get("required_detection_count", 2)
+            ),
         )
 
     def execute_report(self, step: dict) -> ActionStatus:
@@ -236,9 +266,21 @@ class SequenceExecutor:
         params = step.get("params", {})
         object_name = step.get("object")
         return actions.follow_action(
+            node=self._get_nav_node(),
             object_name=object_name,
             duration_sec=max(float(params.get("duration_sec", 10.0)), 0.0),
             safe_distance_m=float(params.get("safe_distance_m", 1.0)),
+            detection_topic=str(params.get("detection_topic", "/vision/detections")),
+            cmd_vel_topic=str(params.get("cmd_vel_topic", "/cmd_vel")),
+            image_width_px=float(params.get("image_width_px", 640.0)),
+            desired_bbox_height_px=float(
+                params.get("desired_bbox_height_px", 190.0)
+            ),
+            max_linear_speed=float(params.get("max_linear_speed", 0.25)),
+            max_angular_speed=float(params.get("max_angular_speed", 0.45)),
+            target_lost_timeout_sec=float(
+                params.get("target_lost_timeout_sec", 3.0)
+            ),
         )
 
     def default_search_patrol(self, object_name: str | None) -> list[str]:

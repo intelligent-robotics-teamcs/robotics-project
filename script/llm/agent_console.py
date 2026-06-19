@@ -122,6 +122,42 @@ def describe_sequence(sequence) -> str:
     )
 
 
+def describe_action_progress(step: dict, attempt=None, max_attempts=None) -> str:
+    action = step.get("action")
+    object_name = step.get("object")
+    params = step.get("params") if isinstance(step.get("params"), dict) else {}
+    target = display_object_name(object_name)
+
+    if action == "search":
+        text = f"{target}를 찾는 중입니다."
+    elif action == "approach":
+        text = f"{target}으로 이동합니다."
+    elif action == "observe":
+        text = f"{target} 관찰을 시작합니다."
+    elif action == "feed":
+        item = display_object_name(params.get("item") or "apple")
+        text = f"{item}로 {target}에게 급식합니다."
+    elif action == "follow":
+        text = f"{target} 추종을 시작합니다."
+    elif action == "wait":
+        text = f"{format_duration(params.get('duration_sec'))} 대기합니다."
+    elif action == "report":
+        text = "결과를 보고합니다."
+    else:
+        text = f"{describe_step(step)}을 수행합니다."
+
+    try:
+        attempt_value = int(attempt)
+        max_attempts_value = int(max_attempts)
+    except (TypeError, ValueError):
+        return text
+
+    if max_attempts_value > 1:
+        text = f"{text} ({attempt_value}/{max_attempts_value})"
+
+    return text
+
+
 def limit_text(text: str, max_chars: int) -> str:
     text = (text or "").strip()
     if max_chars <= 0 or len(text) <= max_chars:
@@ -232,6 +268,28 @@ class AgentConsole(Node):
         status = str(payload.get("status") or "")
         sequence = payload.get("sequence")
         message = str(payload.get("message") or "").strip()
+
+        if event == "step_started":
+            step = payload.get("step")
+            if not isinstance(step, dict):
+                step = {
+                    "action": payload.get("action"),
+                    "object": payload.get("object_name"),
+                    "params": {},
+                }
+            print(
+                f"agent: {describe_action_progress(step, payload.get('attempt'), payload.get('max_attempts'))}",
+                flush=True,
+            )
+            return
+
+        if event == "object_found":
+            object_name = payload.get("object_name")
+            print(
+                f"agent: {display_object_name(object_name)}를 찾았습니다.",
+                flush=True,
+            )
+            return
 
         if event == "started":
             flow = describe_sequence(sequence)

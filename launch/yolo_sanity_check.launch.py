@@ -16,6 +16,9 @@ def generate_launch_description():
     scan_angular_speed = LaunchConfiguration("scan_angular_speed")
     scan_duration_sec = LaunchConfiguration("scan_duration_sec")
     scan_start_delay_sec = LaunchConfiguration("scan_start_delay_sec")
+    enable_moving_pets = LaunchConfiguration("enable_moving_pets")
+    pet_motion_speed = LaunchConfiguration("pet_motion_speed")
+    pet_motion_update_rate = LaunchConfiguration("pet_motion_update_rate")
 
     package_share_dir = get_package_share_directory("pet_robot_pkg")
     turtlebot3_share_dir = get_package_share_directory("turtlebot3_gazebo")
@@ -76,6 +79,18 @@ def generate_launch_description():
                 "scan_start_delay_sec",
                 default_value="3.0",
             ),
+            DeclareLaunchArgument(
+                "enable_moving_pets",
+                default_value="false",
+            ),
+            DeclareLaunchArgument(
+                "pet_motion_speed",
+                default_value="0.06",
+            ),
+            DeclareLaunchArgument(
+                "pet_motion_update_rate",
+                default_value="10.0",
+            ),
             SetEnvironmentVariable("GAZEBO_MODEL_PATH", gazebo_model_paths),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(gazebo_launch),
@@ -104,6 +119,20 @@ def generate_launch_description():
                         "angular_speed": scan_angular_speed,
                         "duration_sec": scan_duration_sec,
                         "start_delay_sec": scan_start_delay_sec,
+                    }
+                ],
+            ),
+            Node(
+                package="pet_robot_pkg",
+                executable="moving_pet_targets",
+                name="moving_pet_targets",
+                output="screen",
+                condition=IfCondition(enable_moving_pets),
+                parameters=[
+                    {
+                        "speed_mps": pet_motion_speed,
+                        "cat_speed_mps": pet_motion_speed,
+                        "update_rate_hz": pet_motion_update_rate,
                     }
                 ],
             ),

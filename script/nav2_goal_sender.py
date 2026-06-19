@@ -295,6 +295,34 @@ class Nav2GoalSender(Node):
             rclpy.spin_once(self, timeout_sec=0.1)
 
             if time.monotonic() - start_time > timeout_sec:
+                min_distance = self._min_distance_remaining
+
+                if (
+                    min_distance is not None
+                    and min_distance <= goal_tolerance_m
+                ):
+                    self.get_logger().warn(
+                        f"Navigation result timed out after {timeout_sec:.1f} sec, "
+                        f"but feedback reached tolerance "
+                        f"({min_distance:.2f} m <= {goal_tolerance_m:.2f} m). "
+                        "Canceling pending goal and treating as success."
+                    )
+
+                    cancel_future = goal_handle.cancel_goal_async()
+
+                    while not cancel_future.done():
+                        rclpy.spin_once(self, timeout_sec=0.1)
+
+                    return NavigationResult(
+                        state=NavigationState.SUCCESS,
+                        object_name=object_name,
+                        target_name=target_name,
+                        min_distance_remaining=min_distance,
+                        message=(
+                            "Reached goal tolerance before Nav2 result arrived."
+                        )
+                    )
+
                 self.get_logger().warn(
                     f"Navigation timeout after {timeout_sec:.1f} sec. "
                     "Canceling goal..."

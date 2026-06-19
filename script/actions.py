@@ -18,6 +18,19 @@ if TYPE_CHECKING:
         from nav2_goal_sender import Nav2GoalSender
 
 
+def navigation_result_to_action_status(result) -> ActionStatus:
+    if getattr(result, "success", False):
+        return ActionStatus.SUCCESS
+
+    state = getattr(getattr(result, "state", None), "value", "")
+
+    if state == "TIMEOUT":
+        return ActionStatus.TIMEOUT
+    if state == "REJECTED":
+        return ActionStatus.REJECTED
+
+    return ActionStatus.FAILED
+
 
 def approach_action(
     node,
@@ -26,8 +39,21 @@ def approach_action(
     goal_tolerance_m: float = 0.35,
     retry_count: int = 0,
 ):
-    node.get_logger().info(
-        f"[APPROACH] using direct odom approach for {object_name}"
+    if hasattr(node, "navigate_to_object"):
+        node.get_logger().info(
+            f"[APPROACH] using Nav2 approach for {object_name}"
+        )
+
+        result = node.navigate_to_object(
+            object_name=object_name,
+            timeout_sec=timeout_sec,
+            goal_tolerance_m=goal_tolerance_m,
+        )
+
+        return navigation_result_to_action_status(result)
+
+    node.get_logger().warn(
+        f"[APPROACH] Nav2 node unavailable; using direct odom fallback for {object_name}"
     )
 
     return direct_odom_approach_action(
@@ -59,6 +85,161 @@ def observe_action(
     time.sleep(duration_sec)
     print(f"[OBSERVE] {object_name} observation finished")
     return ActionStatus.SUCCESS
+
+
+def face_target_action(
+    node,
+    object_name: str,
+    timeout_sec: float = 8.0,
+    yaw_tolerance_rad: float = 0.12,
+    max_angular_speed: float = 0.45,
+    cmd_vel_topic: str = "/cmd_vel",
+    base_frame: str = "base_footprint",
+) -> ActionStatus:
+    import math
+
+    import rclpy
+    from geometry_msgs.msg import Twist
+    from nav_msgs.msg import Odometry
+
+    def normalize_angle(angle: float) -> float:
+        while angle > math.pi:
+            angle -= 2.0 * math.pi
+        while angle < -math.pi:
+            angle += 2.0 * math.pi
+        return angle
+
+    def yaw_from_quaternion(q) -> float:
+        siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
+        cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+        return math.atan2(siny_cosp, cosy_cosp)
+
+    def clamp(value: float, min_value: float, max_value: float) -> float:
+        return max(min_value, min(max_value, value))
+
+    try:
+        center = node.resolver.get_object_center(object_name)
+    except Exception as e:
+        node.get_logger().info(
+            f"[FACE_TARGET] no object center for {object_name}: {e}"
+        )
+        return ActionStatus.SKIPPED
+
+    frame_id = str(center.get("frame_id", "map"))
+    target_x = float(center["x"])
+    target_y = float(center["y"])
+
+    current = {
+        "ready": False,
+        "x": 0.0,
+        "y": 0.0,
+        "yaw": 0.0,
+    }
+
+    def odom_callback(msg: Odometry):
+        current["x"] = msg.pose.pose.position.x
+        current["y"] = msg.pose.pose.position.y
+        current["yaw"] = yaw_from_quaternion(msg.pose.pose.orientation)
+        current["ready"] = True
+
+    cmd_pub = node.create_publisher(Twist, cmd_vel_topic, 10)
+    odom_sub = node.create_subscription(Odometry, "/odom", odom_callback, 10)
+
+    tf_buffer = None
+    tf_listener = None
+    try:
+        from rclpy.time import Time
+        from tf2_ros import Buffer, TransformListener
+
+        tf_buffer = Buffer()
+        tf_listener = TransformListener(tf_buffer, node)
+        tf_time = Time()
+    except Exception as e:
+        node.get_logger().warn(
+            f"[FACE_TARGET] TF unavailable, falling back to /odom: {e}"
+        )
+        tf_time = None
+
+    def read_pose():
+        if tf_buffer is not None:
+            try:
+                transform = tf_buffer.lookup_transform(
+                    frame_id,
+                    base_frame,
+                    tf_time,
+                )
+                translation = transform.transform.translation
+                rotation = transform.transform.rotation
+                return (
+                    float(translation.x),
+                    float(translation.y),
+                    yaw_from_quaternion(rotation),
+                )
+            except Exception:
+                pass
+
+        if current["ready"]:
+            return current["x"], current["y"], current["yaw"]
+
+        return None
+
+    def publish_stop():
+        cmd_pub.publish(Twist())
+
+    node.get_logger().info(
+        f"[FACE_TARGET] rotating to face {object_name} center "
+        f"at ({target_x:.2f}, {target_y:.2f}) in {frame_id}"
+    )
+
+    deadline = time.monotonic() + max(timeout_sec, 0.1)
+    last_log_time = 0.0
+
+    try:
+        while rclpy.ok() and time.monotonic() < deadline:
+            rclpy.spin_once(node, timeout_sec=0.05)
+
+            pose = read_pose()
+            if pose is None:
+                continue
+
+            current_x, current_y, current_yaw = pose
+            target_yaw = math.atan2(target_y - current_y, target_x - current_x)
+            yaw_error = normalize_angle(target_yaw - current_yaw)
+
+            if abs(yaw_error) <= yaw_tolerance_rad:
+                publish_stop()
+                node.get_logger().info(
+                    f"[FACE_TARGET] {object_name} aligned "
+                    f"yaw_error={yaw_error:.2f}"
+                )
+                return ActionStatus.SUCCESS
+
+            cmd = Twist()
+            cmd.angular.z = clamp(
+                1.2 * yaw_error,
+                -abs(max_angular_speed),
+                abs(max_angular_speed),
+            )
+            cmd_pub.publish(cmd)
+
+            now = time.monotonic()
+            if now - last_log_time >= 0.5:
+                node.get_logger().info(
+                    f"[FACE_TARGET] current=({current_x:.2f}, {current_y:.2f}, yaw={current_yaw:.2f}) "
+                    f"target_yaw={target_yaw:.2f} yaw_error={yaw_error:.2f}"
+                )
+                last_log_time = now
+
+            time.sleep(0.05)
+
+        publish_stop()
+        node.get_logger().warn(f"[FACE_TARGET] {object_name} alignment timed out")
+        return ActionStatus.TIMEOUT
+
+    finally:
+        publish_stop()
+        node.destroy_subscription(odom_sub)
+        node.destroy_publisher(cmd_pub)
 
 
 DETECTION_LABEL_ALIAS = {
@@ -96,13 +277,22 @@ def detection_matches_target(detection: dict, object_name: str) -> bool:
     target = normalize_detection_label(object_name)
 
     return bool(label) and label == target
-def extract_detection_list(data: str) -> list[dict]:
+
+
+def extract_detection_payload(data: str) -> tuple[list[dict], float | None]:
     try:
         payload = json.loads(data)
     except json.JSONDecodeError:
-        return []
+        return [], None
+
+    stamp_wall = None
 
     if isinstance(payload, dict):
+        try:
+            stamp_wall = float(payload["stamp_wall"])
+        except (KeyError, TypeError, ValueError):
+            stamp_wall = None
+
         detections = (
             payload.get("detections")
             or payload.get("filtered_detections")
@@ -114,24 +304,34 @@ def extract_detection_list(data: str) -> list[dict]:
     else:
         detections = []
 
-    return [
-        detection
-        for detection in detections
-        if isinstance(detection, dict)
-    ]
+    return (
+        [
+            detection
+            for detection in detections
+            if isinstance(detection, dict)
+        ],
+        stamp_wall,
+    )
+
+
+def extract_detection_list(data: str) -> list[dict]:
+    detections, _ = extract_detection_payload(data)
+    return detections
 
 
 def search_action(
     node: Nav2GoalSender,
     object_name: str,
-    timeout_sec: float = 45.0,
-    scan_duration_sec: float = 4.0,
+    timeout_sec: float = 120.0,
+    scan_duration_sec: float = 8.0,
     angular_speed: float = 0.35,
     detection_topic: str = "/vision/detections",
     cmd_vel_topic: str = "/cmd_vel",
     patrol_objects: list[str] | None = None,
-    navigation_timeout_sec: float = 20.0,
+    navigation_timeout_sec: float = 45.0,
     goal_tolerance_m: float = 0.35,
+    detection_max_age_sec: float = 1.0,
+    required_detection_count: int = 2,
 ) -> ActionStatus:
     """
     Search for an object using live detections.
@@ -147,13 +347,38 @@ def search_action(
 
     found = {
         "value": False,
+        "count": 0,
     }
+    start_wall_time = time.time()
+    detection_max_age_sec = max(float(detection_max_age_sec), 0.05)
+    required_detection_count = max(int(required_detection_count), 1)
 
     def detection_callback(msg):
-        for detection in extract_detection_list(msg.data):
-            if detection_matches_target(detection, object_name):
+        detections, stamp_wall = extract_detection_payload(msg.data)
+        now_wall = time.time()
+
+        if stamp_wall is None:
+            stamp_wall = now_wall
+
+        if stamp_wall + 0.05 < start_wall_time:
+            return
+
+        if now_wall - stamp_wall > detection_max_age_sec:
+            return
+
+        matched = any(
+            detection_matches_target(detection, object_name)
+            for detection in detections
+        )
+
+        if matched:
+            found["count"] += 1
+            if found["count"] >= required_detection_count:
                 found["value"] = True
-                return
+            return
+
+        if detections:
+            found["count"] = 0
 
     publisher = node.create_publisher(Twist, cmd_vel_topic, 10)
     subscription = node.create_subscription(
@@ -187,7 +412,11 @@ def search_action(
         return found["value"]
 
     try:
-        print(f"[SEARCH] searching for {object_name}")
+        print(
+            f"[SEARCH] searching for {object_name} "
+            f"(fresh<= {detection_max_age_sec:.1f}s, "
+            f"confirmations={required_detection_count})"
+        )
 
         if spin_scan(scan_duration_sec):
             print(f"[SEARCH] {object_name} detected")
@@ -232,21 +461,195 @@ def search_action(
 
 
 def follow_action(
+    node,
     object_name: str,
     duration_sec: float = 10.0,
     safe_distance_m: float = 1.0,
+    detection_topic: str = "/vision/detections",
+    cmd_vel_topic: str = "/cmd_vel",
+    image_width_px: float = 640.0,
+    desired_bbox_height_px: float = 190.0,
+    max_linear_speed: float = 0.25,
+    max_angular_speed: float = 0.45,
+    target_lost_timeout_sec: float = 3.0,
 ) -> ActionStatus:
     """
     object를 따라가는 action
     Vision 연동 전까지는 실제 구현하지 않고 SKIPPED 반환
     """
 
-    print(
-        f"[FOLLOW] follow {object_name} for {duration_sec} sec "
-        f"with safe distance {safe_distance_m} m"
+    import rclpy
+    from geometry_msgs.msg import Twist
+    from std_msgs.msg import String
+
+    latest = {
+        "detection": None,
+        "time": None,
+        "last_error": 0.0,
+        "seen": False,
+    }
+
+    def clamp(value: float, min_value: float, max_value: float) -> float:
+        return max(min_value, min(max_value, value))
+
+    def select_detection(detections: list[dict]) -> dict | None:
+        matches = [
+            detection
+            for detection in detections
+            if detection_matches_target(detection, object_name)
+        ]
+
+        if not matches:
+            return None
+
+        return max(
+            matches,
+            key=lambda detection: float(detection.get("confidence", 0.0)),
+        )
+
+    def bbox_height(detection: dict) -> float:
+        bbox = detection.get("bbox") or {}
+
+        try:
+            return max(1.0, float(bbox["y2"]) - float(bbox["y1"]))
+        except (KeyError, TypeError, ValueError):
+            return 0.0
+
+    def center_x(detection: dict) -> float | None:
+        center = detection.get("center") or {}
+        if "x" in center:
+            try:
+                return float(center["x"])
+            except (TypeError, ValueError):
+                pass
+
+        bbox = detection.get("bbox") or {}
+        try:
+            return (float(bbox["x1"]) + float(bbox["x2"])) / 2.0
+        except (KeyError, TypeError, ValueError):
+            return None
+
+    def detection_callback(msg):
+        detection = select_detection(extract_detection_list(msg.data))
+        if detection is None:
+            return
+
+        x = center_x(detection)
+        if x is None:
+            return
+
+        latest["detection"] = detection
+        latest["time"] = time.monotonic()
+        latest["last_error"] = (
+            (image_width_px / 2.0) - x
+        ) / max(image_width_px / 2.0, 1.0)
+        latest["seen"] = True
+
+    publisher = node.create_publisher(Twist, cmd_vel_topic, 10)
+    subscription = node.create_subscription(
+        String,
+        detection_topic,
+        detection_callback,
+        10,
     )
-    print("[FOLLOW] not implemented yet. skipped.")
-    return ActionStatus.SKIPPED
+
+    duration_sec = max(duration_sec, 0.0)
+    target_lost_timeout_sec = max(target_lost_timeout_sec, 0.1)
+    desired_bbox_height_px = max(desired_bbox_height_px, 20.0)
+    max_linear_speed = abs(max_linear_speed)
+    max_angular_speed = abs(max_angular_speed)
+    center_deadband = 0.08
+    distance_deadband = 0.18
+    deadline = time.monotonic() + duration_sec
+
+    def publish_stop():
+        publisher.publish(Twist())
+
+    node.get_logger().info(
+        f"[FOLLOW] tracking {object_name} for {duration_sec:.1f}s "
+        f"using {detection_topic}; safe_distance={safe_distance_m:.2f}m"
+    )
+
+    try:
+        last_log_time = 0.0
+
+        while rclpy.ok() and time.monotonic() < deadline:
+            rclpy.spin_once(node, timeout_sec=0.05)
+            now = time.monotonic()
+            command = Twist()
+
+            detection = latest["detection"]
+            last_seen_time = latest["time"]
+
+            if detection is None or last_seen_time is None:
+                command.angular.z = 0.18
+                publisher.publish(command)
+                time.sleep(0.05)
+                continue
+
+            lost_for = now - last_seen_time
+            if lost_for > target_lost_timeout_sec:
+                publish_stop()
+                node.get_logger().warn(
+                    f"[FOLLOW] lost {object_name} for {lost_for:.1f}s"
+                )
+                return ActionStatus.TIMEOUT
+
+            if lost_for > 0.5:
+                command.angular.z = clamp(
+                    0.25 * latest["last_error"],
+                    -0.25,
+                    0.25,
+                )
+                publisher.publish(command)
+                time.sleep(0.05)
+                continue
+
+            x_error = float(latest["last_error"])
+            height = bbox_height(detection)
+            height_error = (
+                desired_bbox_height_px - height
+            ) / desired_bbox_height_px
+
+            if abs(x_error) > center_deadband:
+                command.angular.z = clamp(
+                    0.9 * x_error,
+                    -max_angular_speed,
+                    max_angular_speed,
+                )
+
+            if abs(x_error) < 0.35 and abs(height_error) > distance_deadband:
+                command.linear.x = clamp(
+                    0.20 * height_error,
+                    -0.08,
+                    max_linear_speed,
+                )
+
+            publisher.publish(command)
+
+            if now - last_log_time >= 0.5:
+                node.get_logger().info(
+                    f"[FOLLOW] {object_name} x_error={x_error:.2f} "
+                    f"bbox_h={height:.1f} cmd=({command.linear.x:.2f}, "
+                    f"{command.angular.z:.2f})"
+                )
+                last_log_time = now
+
+            time.sleep(0.05)
+
+        publish_stop()
+
+        if latest["seen"]:
+            node.get_logger().info(f"[FOLLOW] {object_name} follow complete")
+            return ActionStatus.SUCCESS
+
+        node.get_logger().warn(f"[FOLLOW] {object_name} was not detected")
+        return ActionStatus.TIMEOUT
+
+    finally:
+        publish_stop()
+        node.destroy_subscription(subscription)
+        node.destroy_publisher(publisher)
 
 
 def feed_action(

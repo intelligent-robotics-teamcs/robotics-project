@@ -108,6 +108,14 @@ def test_coerce_fills_executor_params_and_step_ids():
         },
         {
             "step_id": 2,
+            "action": "observe",
+            "object": "chair",
+            "params": {
+                "duration_sec": 5.0,
+            },
+        },
+        {
+            "step_id": 3,
             "action": "report",
             "object": None,
             "params": {
@@ -201,9 +209,9 @@ def test_user_request_targets_override_visible_vase():
             "action": "search",
             "object": "dog",
             "params": {
-                "timeout_sec": 45.0,
-                "duration_sec": 4.0,
-                "retry_count": 0,
+                "timeout_sec": 120.0,
+                "duration_sec": 8.0,
+                "retry_count": 1,
             },
         },
         {
@@ -219,9 +227,9 @@ def test_user_request_targets_override_visible_vase():
             "action": "search",
             "object": "cat",
             "params": {
-                "timeout_sec": 45.0,
-                "duration_sec": 4.0,
-                "retry_count": 0,
+                "timeout_sec": 120.0,
+                "duration_sec": 8.0,
+                "retry_count": 1,
             },
         },
         {
@@ -296,6 +304,47 @@ def test_where_is_vase_searches_before_observe():
     ]
 
 
+def test_follow_request_uses_follow_action():
+    actual = smart_plan_sequence(
+        "강아지를 천천히 따라가",
+        ["dog"],
+    )
+
+    assert [
+        (step["action"], step["object"])
+        for step in actual
+    ] == [
+        ("search", "dog"),
+        ("follow", "dog"),
+        ("report", None),
+    ]
+    assert actual[1]["params"] == {
+        "duration_sec": 10.0,
+        "safe_distance_m": 1.0,
+    }
+
+
+def test_feed_after_chair_preserves_chair_first():
+    actual = smart_plan_sequence(
+        "Check the chair and feed the dog after that",
+        ["dog", "chair"],
+    )
+
+    assert [
+        (step["action"], step["object"])
+        for step in actual
+    ] == [
+        ("search", "chair"),
+        ("approach", "chair"),
+        ("observe", "chair"),
+        ("search", "apple"),
+        ("approach", "apple"),
+        ("search", "dog"),
+        ("feed", "dog"),
+        ("report", None),
+    ]
+
+
 def test_coerce_rejects_detected_object_plan_when_user_requested_other_targets():
     actual = coerce_action_sequence(
         {
@@ -350,6 +399,8 @@ def main():
     test_feeding_cat_searches_food_then_cat()
     test_hungry_dog_uses_food_then_feed_action()
     test_where_is_vase_searches_before_observe()
+    test_follow_request_uses_follow_action()
+    test_feed_after_chair_preserves_chair_first()
     test_coerce_rejects_detected_object_plan_when_user_requested_other_targets()
     test_prompt_requests_intermediate_step_planning()
     print("LLM sequence generator tests passed")

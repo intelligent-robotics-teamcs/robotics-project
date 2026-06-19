@@ -87,6 +87,38 @@ def describe_sequence_step(step):
     return str(action or "작업")
 
 
+def summarize_sequence_comment(steps, feed_step):
+    if not feed_step:
+        return ""
+
+    feed_params = feed_step.get("params")
+    feed_params = feed_params if isinstance(feed_params, dict) else {}
+    item = display_object_name(feed_params.get("item") or "apple")
+    pet = display_object_name(feed_step.get("object"))
+    feed_index = steps.index(feed_step)
+    prior_targets = []
+
+    for step in steps[:feed_index]:
+        if step.get("action") not in {"approach", "observe"}:
+            continue
+
+        target = step.get("object")
+        if target in {None, "apple", feed_step.get("object")}:
+            continue
+
+        if target not in prior_targets:
+            prior_targets.append(target)
+
+    if prior_targets:
+        prior_text = ", ".join(
+            display_object_name(target)
+            for target in prior_targets
+        )
+        return f"{prior_text}를 확인한 뒤 {item}로 {pet}에게 급식하겠습니다."
+
+    return f"{item}를 준비한 뒤 {pet}에게 급식하겠습니다."
+
+
 def build_agent_response(sequence, comment: str = ""):
     comment = (comment or "").strip()
     steps = [
@@ -117,6 +149,9 @@ def build_agent_response(sequence, comment: str = ""):
         None,
     )
     has_report = any(step.get("action") == "report" for step in steps)
+
+    if not comment:
+        comment = summarize_sequence_comment(steps, feed_step)
 
     if not comment and feed_step:
         feed_params = feed_step.get("params")
@@ -224,9 +259,11 @@ class LLMSequenceNode(Node):
         self.declare_parameter("timer_period_sec", 5.0)
         self.declare_parameter("require_user_request", False)
         self.declare_parameter("interactive_input", False)
+        self.declare_parameter("detection_max_age_sec", 1.0)
 
         self.detected_labels = []
         self.last_valid_labels = []
+        self.empty_detection_count = 0
         self.last_sequence_key = None
         self.latest_user_request = ""
         self.user_request_id = 0
@@ -236,6 +273,10 @@ class LLMSequenceNode(Node):
         self.interactive_input_enabled = self.get_bool_parameter("interactive_input")
 
         self.label_history = []
+        self.detection_max_age_sec = max(
+            0.1,
+            float(self.get_parameter("detection_max_age_sec").value),
+        )
 
         self.detection_sub = self.create_subscription(
             String,
@@ -344,13 +385,26 @@ class LLMSequenceNode(Node):
         try:
             detections = json.loads(msg.data)
 
+            stamp_wall = None
+
             if isinstance(detections, dict):
+                try:
+                    stamp_wall = float(detections["stamp_wall"])
+                except (KeyError, TypeError, ValueError):
+                    stamp_wall = None
+
                 detections = (
                     detections.get("detections")
                     or detections.get("filtered_detections")
                     or detections.get("objects")
                     or []
                 )
+
+            if (
+                stamp_wall is not None
+                and time.time() - stamp_wall > self.detection_max_age_sec
+            ):
+                return
 
             if not isinstance(detections, list):
                 self.get_logger().warn(
@@ -371,7 +425,15 @@ class LLMSequenceNode(Node):
 
             if labels:
                 self.last_valid_labels = labels
+                self.empty_detection_count = 0
             else:
+                self.empty_detection_count += 1
+                if self.empty_detection_count >= 3:
+                    self.last_valid_labels = []
+                    self.label_history = []
+                    self.detected_labels = []
+                    self.get_logger().info("Detected labels: []")
+                    return
                 labels = self.last_valid_labels
 
             self.label_history.extend(labels)
@@ -434,6 +496,17 @@ class LLMSequenceNode(Node):
         try:
             result = call_llm_api(user_text, detected_labels)
             sequence = result.get("sequence", []) if isinstance(result, dict) else []
+            planner = (
+                result.get("planner", "unknown")
+                if isinstance(result, dict)
+                else "unknown"
+            )
+            self.get_logger().info(f"Planner source: {planner}")
+            if planner == "fallback_after_error":
+                self.get_logger().warn(
+                    "OpenAI planner failed; using fallback planner: "
+                    f"{result.get('planner_error', 'unknown error')}"
+                )
             agent_comment, agent_flow = build_agent_response(
                 sequence,
                 str(result.get("comment") or "") if isinstance(result, dict) else "",

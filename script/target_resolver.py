@@ -32,7 +32,10 @@ class TargetResolver:
         config_path = Path(__file__).resolve().parent / target_config
 
         with open(config_path, "r", encoding="utf-8") as f:
-            self.targets = yaml.safe_load(f)["targets"]
+            data = yaml.safe_load(f)
+
+        self.targets = data["targets"]
+        self.object_centers = data.get("object_centers", {})
 
     def get_pose(self, object_name):
         """
@@ -48,6 +51,16 @@ class TargetResolver:
             return self._resolve_dynamic(object_name)
 
         raise ValueError(f"Unknown object: {object_name}")
+
+    def get_object_center(self, object_name):
+        """
+        Return the actual object center pose, separate from approach zones.
+        """
+
+        if object_name not in self.object_centers:
+            raise ValueError(f"Undefined object center: {object_name}")
+
+        return self.object_centers[object_name]
 
     def _resolve_static(self, object_name):
         """

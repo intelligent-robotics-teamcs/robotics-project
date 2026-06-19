@@ -7,8 +7,6 @@
 # toward the center to avoid collision with the object.
 
 targets:
-  # 현재 world_yolo_sanity_check에는 ball include가 없음.
-  # ball을 테스트하려면 world 파일에 model://ball include를 추가해야 함.
   ball_zone:
     frame_id: "map"
     x: 0.47
@@ -32,10 +30,10 @@ targets:
 
   chair_zone:
     frame_id: "map"
-    x: -1.45
-    y: -1.21
-    yaw: -2.4469
-    description: "Chair approach point"
+    x: -0.95
+    y: -0.82
+    yaw: -2.42
+    description: "Chair approach viewpoint, kept about 0.8 m from the chair center"
 
   cat_zone:
     frame_id: "map"
@@ -60,3 +58,39 @@ targets:
 
 # Dynamic targets such as dog/person are detected by vision.
 # They should not be approached through target.yaml unless fixed demo zones are intentionally added.
+
+object_centers:
+  apple:
+    frame_id: "map"
+    x: 0.0
+    y: -2.20
+    yaw: 0.0
+    description: "Gazebo apple model center used by face_target"
+
+  bed:
+    frame_id: "map"
+    x: -2.40
+    y: 1.70
+    yaw: 3.1416
+    description: "Gazebo bed model center used by face_target"
+
+  chair:
+    frame_id: "map"
+    x: -1.55
+    y: -1.35
+    yaw: 2.3562
+    description: "Gazebo chair model center used by face_target"
+
+  cat:
+    frame_id: "map"
+    x: 1.80
+    y: -1.35
+    yaw: -1.5708
+    description: "Gazebo cat model center used by face_target"
+
+  vase:
+    frame_id: "map"
+    x: 1.75
+    y: 1.35
+    yaw: 2.3562
+    description: "Gazebo vase model center used by face_target"
