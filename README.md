@@ -290,6 +290,9 @@ python3 script/llm/test_llm_sequence_generator.py
 - How to Use YOLOv8 with ROS2: https://www.youtube.com/watch?v=XqibXP4lwgA
 - Home robot simulation tutorial: https://blog.kaia.ai/gazebo-3d-simulation-tutorial/
 
+- 노션 팀스페이스: https://www.notion.so/48ba56ed4d1c8263bb00815b41e31c97?source=copy_link
+  - 작업 과정, 디버깅 기록 등 포함 
+
 ## YouTube 링크
 
 추가 예정
