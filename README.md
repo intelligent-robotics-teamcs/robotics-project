@@ -295,7 +295,7 @@ python3 script/llm/test_llm_sequence_generator.py
 
 ## YouTube 링크
 
-추가 예정
+https://www.youtube.com/watch?v=5xdgA-GXf4c
 
 ## GitHub 링크
 
